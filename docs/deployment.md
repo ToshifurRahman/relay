@@ -11,21 +11,23 @@ the values; the repository holds only names.
 
 `render.yaml` at the repository root declares one service:
 
-| Setting             | Value                                                         |
-| ------------------- | ------------------------------------------------------------- |
-| `type`              | `web`                                                         |
-| `runtime`           | `docker` (builds `./Dockerfile`)                              |
-| `name`              | `relay`                                                       |
-| `plan`              | `free`, one instance, no `numInstances`                       |
-| `region`            | `singapore`                                                   |
-| `branch`            | `main`                                                        |
-| `healthCheckPath`   | `/health/ready`                                               |
-| `autoDeployTrigger` | `checksPass`                                                  |
-| `dockerCommand`     | `/bin/sh -c "bun scripts/migrate.ts && exec bun src/main.ts"` |
+| Setting             | Value                                   |
+| ------------------- | --------------------------------------- |
+| `type`              | `web`                                   |
+| `runtime`           | `docker` (builds `./Dockerfile`)        |
+| `name`              | `relay`                                 |
+| `plan`              | `free`, one instance, no `numInstances` |
+| `region`            | `singapore`                             |
+| `branch`            | `main`                                  |
+| `healthCheckPath`   | `/health/ready`                         |
+| `autoDeployTrigger` | `checksPass`                            |
+| `dockerCommand`     | `sh scripts/start.sh`                   |
 
-The runtime stage sets `WORKDIR /app/apps/api`, so both script paths in `dockerCommand` are
-relative to it. The image already sets `ENV NODE_ENV=production`, so `NODE_ENV` is deliberately
-absent from the blueprint.
+The runtime stage sets `WORKDIR /app/apps/api`, so the script path in `dockerCommand` is
+relative to it. The command is a script and not a quoted `/bin/sh -c "..."` string, because
+Render does not honor the quotes: it runs the quoted text as one program name and the start
+fails with exit 127. The image already sets `ENV NODE_ENV=production`, so `NODE_ENV` is
+deliberately absent from the blueprint.
 
 **The one manual step:** in the Render dashboard choose New, then Blueprint, and point it at this
 repository on the `main` branch. Render reads `render.yaml`, creates the service and asks for a
@@ -103,16 +105,19 @@ put a secret in one. The Turnstile secret is `TURNSTILE_SECRET_KEY`, not the sit
 
 ## Migrations
 
-The free plan has no pre-deploy command, so the migration is part of the start command:
+The free plan has no pre-deploy command, so the migration is part of the start command, which is
+`apps/api/scripts/start.sh`:
 
-```
-/bin/sh -c "bun scripts/migrate.ts && exec bun src/main.ts"
+```sh
+set -e
+bun scripts/migrate.ts
+exec bun src/main.ts
 ```
 
 - `apps/api/scripts/migrate.ts` is idempotent. It creates `schema_migrations` if it is missing,
   skips files already recorded there, and runs each file in its own transaction. It prefers
   `DATABASE_DIRECT_URL` and falls back to `DATABASE_URL`.
-- The `&&` is the guard: a migration that exits non-zero stops the command, so the server never
+- `set -e` is the guard: a migration that exits non-zero stops the script, so the server never
   starts against a half-migrated schema and Render marks the deploy failed.
 - `exec` replaces the shell with the server, so bun becomes PID 1. Render sends SIGTERM to PID 1
   on every deploy and waits for the process to exit; without `exec` the shell keeps the signal to

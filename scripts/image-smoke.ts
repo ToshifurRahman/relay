@@ -11,8 +11,8 @@ import pg from 'pg';
 // If `docker build` needs host networking on your machine: IMAGE_BUILD_NETWORK=host.
 //
 // Story 7.9: the last step runs the image through the exact dockerCommand from render.yaml
-// (`/bin/sh -c "bun scripts/migrate.ts && bun src/main.ts"`) against a fresh database, and
-// requires a row in schema_migrations plus a 200 from /health/ready.
+// (`sh scripts/start.sh`) against a fresh database, and requires a row in schema_migrations
+// plus a 200 from /health/ready.
 
 const IMAGE = 'relay-app:local';
 const DB_NAME = 'ticket_pipe_image';
@@ -72,6 +72,7 @@ async function checkImageContents() {
 
   const script = [
     'cd /app',
+    'test -f apps/api/scripts/start.sh || { echo "missing apps/api/scripts/start.sh"; exit 1; }',
     'found=$(find . \\( -name ".env" -o -name ".env.*" -o -name "*.test.ts" -o -name tests \\) -not -path "*/node_modules/*" | head)',
     'test -z "$found" || { echo "unexpected files: $found"; exit 1; }',
     'for d in pino-pretty vitest typescript eslint; do',
@@ -170,11 +171,14 @@ async function checkDeployCommand() {
   step('Run the render.yaml deploy command against a fresh database');
   const blueprint = readFileSync(path.resolve(import.meta.dirname, '../render.yaml'), 'utf8');
   const line = blueprint.match(/^\s*dockerCommand:\s*(.+)$/m)?.[1]?.trim() ?? '';
-  // `/bin/sh -c "cmd"` is the exec form Render runs; the quoted text is the shell script.
-  const shell = line.match(/^\/bin\/sh -c "(.+)"$/)?.[1];
-  if (!shell) fail(`render.yaml has no /bin/sh -c dockerCommand: ${line}`);
-  if (!shell.includes('scripts/migrate.ts') || !shell.includes('src/main.ts')) {
-    fail(`the deploy command does not name both scripts: ${shell}`);
+  // Render does not honor quotes: the command is split into a program and its arguments, with the
+  // image's WORKDIR (/app/apps/api) as the working directory.
+  if (!line || /['"`&|]/.test(line)) {
+    fail(`render.yaml has a quoted or chained dockerCommand: ${line}`);
+  }
+  const [program, ...commandArgs] = line.split(/\s+/);
+  if (!program?.endsWith('scripts/start.sh')) {
+    fail(`the deploy command is not the start script: ${line}`);
   }
   console.log(`command: ${line}`);
 
@@ -241,9 +245,8 @@ async function checkDeployCommand() {
       '3201:8080',
       ...deployEnv,
       IMAGE,
-      '/bin/sh',
-      '-c',
-      shell,
+      program,
+      ...commandArgs,
     ]);
 
     const ready = await waitFor('the deploy command to answer /health/ready', 60_000, async () => {
@@ -284,9 +287,8 @@ async function checkDeployCommand() {
         '3201:8080',
         ...deployEnv,
         IMAGE,
-        '/bin/sh',
-        '-c',
-        shell,
+        program,
+        ...commandArgs,
       ]);
       await waitFor('the second run to migrate and start', 60_000, async () => {
         const { out, err } = await run(['docker', 'logs', name], { allowFailure: true });
@@ -315,9 +317,9 @@ async function checkDeployCommand() {
     allowFailure: true,
   });
   await removeContainer(name);
-  // `exec bun src/main.ts` replaces the shell with bun, so bun is PID 1 and receives Docker's
-  // SIGTERM directly: the server's drain runs and the container exits 0. A 137 here would mean
-  // the shell swallowed the signal again, which is what Render sends on every deploy.
+  // `exec bun src/main.ts` replaces the script's shell with bun, so bun is PID 1 and receives
+  // Docker's SIGTERM directly: the server's drain runs and the container exits 0. A 137 here
+  // would mean the shell swallowed the signal again, which is what Render sends on every deploy.
   if (!failure && exit.out !== '0') {
     failure = new Error(
       `the deploy command container exited ${exit.out}, expected 0 after a graceful stop\n${out}\n${err}`

@@ -20,3 +20,6 @@ PRODUCT.md
 
 # Temporary files written by the lint guard while Prettier runs
 **/__guard__.*
+
+# Shell scripts: Prettier has no parser for them
+apps/api/scripts/start.sh
