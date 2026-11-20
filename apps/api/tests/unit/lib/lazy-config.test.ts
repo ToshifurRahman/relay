@@ -105,20 +105,45 @@ describe('turnstile verifier', () => {
 });
 
 describe('queue service', () => {
+  // CI writes AWS_REGION into .env, so each case sets or clears it itself instead of trusting
+  // the environment it runs in.
+  const withRegion = async (value: string | undefined, run: () => Promise<void>) => {
+    const saved = process.env.AWS_REGION;
+    if (value === undefined) delete process.env.AWS_REGION;
+    else process.env.AWS_REGION = value;
+    try {
+      await run();
+    } finally {
+      if (saved === undefined) delete process.env.AWS_REGION;
+      else process.env.AWS_REGION = saved;
+    }
+  };
+
   it('builds one QueueService on the first call and reuses it', async () => {
-    const { enqueueTicket } = await import('../../../src/lib/queue.js');
-    expect(mocks.sqsClients).toHaveLength(0);
-    await enqueueTicket('t1', 'REF-1');
-    await enqueueTicket('t2', 'REF-2');
-    expect(mocks.sqsClients).toHaveLength(1);
-    const client = mocks.sqsClients[0] as { options: Record<string, unknown>; send: unknown };
-    expect(client.options).toMatchObject({
-      endpoint: process.env.SQS_ENDPOINT,
-      region: 'ap-south-1',
-      credentials: { accessKeyId: 'test', secretAccessKey: 'test' },
+    await withRegion(undefined, async () => {
+      const { enqueueTicket } = await import('../../../src/lib/queue.js');
+      expect(mocks.sqsClients).toHaveLength(0);
+      await enqueueTicket('t1', 'REF-1');
+      await enqueueTicket('t2', 'REF-2');
+      expect(mocks.sqsClients).toHaveLength(1);
+      const client = mocks.sqsClients[0] as { options: Record<string, unknown>; send: unknown };
+      expect(client.options).toMatchObject({
+        endpoint: process.env.SQS_ENDPOINT,
+        region: 'ap-south-1',
+        credentials: { accessKeyId: 'test', secretAccessKey: 'test' },
+      });
+      // GetQueueUrl once, then one send per ticket.
+      expect(client.send).toHaveBeenCalledTimes(3);
     });
-    // GetQueueUrl once, then one send per ticket.
-    expect(client.send).toHaveBeenCalledTimes(3);
+  });
+
+  it('uses an explicit AWS_REGION instead of the default', async () => {
+    await withRegion('eu-west-1', async () => {
+      const { enqueueTicket } = await import('../../../src/lib/queue.js');
+      await enqueueTicket('t1', 'REF-1');
+      const client = mocks.sqsClients[0] as { options: Record<string, unknown> };
+      expect(client.options).toMatchObject({ region: 'eu-west-1' });
+    });
   });
 });
 
