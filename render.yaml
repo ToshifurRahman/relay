@@ -12,9 +12,10 @@ services:
     healthCheckPath: /health/ready
     autoDeployTrigger: checksPass
     # The free plan has no pre-deploy command, so the migration runs in the start command.
-    # WORKDIR in the runtime stage is /app/apps/api; both paths are relative to it.
-    # `exec` hands PID 1 to bun, so Render's SIGTERM reaches the server's drain on a deploy.
-    dockerCommand: /bin/sh -c "bun scripts/migrate.ts && exec bun src/main.ts"
+    # WORKDIR in the runtime stage is /app/apps/api, so this path is relative to it.
+    # No quotes: Render runs the quoted text as one program name. The script holds the
+    # `set -e` + migrate + `exec bun` sequence; see apps/api/scripts/start.sh.
+    dockerCommand: sh scripts/start.sh
     envVars:
       - key: PORT
         sync: false

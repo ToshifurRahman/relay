@@ -15,6 +15,11 @@ const read = (p: string) => readFileSync(path.join(root, p), 'utf-8');
 
 const blueprint = read('render.yaml');
 const dockerfile = read('Dockerfile');
+// The start command lives in a script, because Render does not honor quotes in `dockerCommand`:
+// it runs the quoted text as one program name. The script is read lazily, so a missing one is a
+// failed assertion rather than a crashing import.
+const startScriptPath = path.join(root, 'apps/api/scripts/start.sh');
+const startScript = existsSync(startScriptPath) ? readFileSync(startScriptPath, 'utf-8') : '';
 const healthRoute = read('apps/api/src/routes/health.ts');
 const appSource = read('apps/api/src/app.ts');
 
@@ -151,22 +156,29 @@ describe('render.yaml deploy', () => {
     expect(existsSync(path.join(root, field('dockerfilePath') ?? ''))).toBe(true);
   });
 
-  it('starts the migration before the server, in one shell, so a failed migration stops the start', () => {
-    const command = field('dockerCommand') ?? '';
-    expect(command.startsWith('/bin/sh -c ')).toBe(true);
-    const migrate = command.indexOf('scripts/migrate.ts');
-    const main = command.indexOf('src/main.ts');
-    expect(migrate, command).toBeGreaterThan(-1);
-    expect(main, command).toBeGreaterThan(-1);
-    expect(migrate).toBeLessThan(main);
-    // `bun scripts/migrate.ts; bun src/main.ts` would start the server after a failed migration.
-    expect(command).toContain('&&');
+  it('starts through apps/api/scripts/start.sh, with no quotes or && for Render to misread', () => {
+    // Render does not honor quotes in `dockerCommand`: the quoted text becomes one program name,
+    // so `/bin/sh -c "..."` fails with exit 127. The command is the script path and nothing else.
+    expect(field('dockerCommand')).toBe('sh scripts/start.sh');
+    expect(field('dockerCommand')).not.toMatch(/['"`&|]/);
+    expect(existsSync(startScriptPath)).toBe(true);
   });
 
-  it('execs the server, so bun is PID 1 and Render sends SIGTERM straight to it', () => {
-    // Without exec the shell keeps PID 1 and does not forward the signal, so the server's drain
-    // (in-flight work, Redis, Postgres) never runs and every deploy waits for Render's SIGKILL.
-    expect(field('dockerCommand')).toContain('exec bun src/main.ts');
+  it('migrates before it starts the server, and execs the server as the last command', () => {
+    expect(startScript).toContain('set -e');
+    const migrate = startScript.indexOf('bun scripts/migrate.ts');
+    const main = startScript.indexOf('exec bun src/main.ts');
+    expect(migrate).toBeGreaterThan(-1);
+    expect(main).toBeGreaterThan(-1);
+    expect(migrate).toBeLessThan(main);
+    // `set -e` is the guard: a failed migration stops the script, so the server never starts.
+    // The exec line must be last, so nothing runs after PID 1 is handed to bun.
+    const lastCommand = startScript
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line !== '' && !line.startsWith('#'))
+      .pop();
+    expect(lastCommand).toBe('exec bun src/main.ts');
   });
 
   it('deploys only after the CI checks pass', () => {
