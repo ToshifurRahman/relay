@@ -42,7 +42,7 @@ const fields = z.object({
   SQS_QUEUE_NAME: required(),
   SQS_DLQ_NAME: optional(),
   WORKER_CONCURRENCY: integer(1).default(10),
-  AWS_REGION: z.string().default('us-east-1'),
+  AWS_REGION: z.string().default('ap-south-1'),
   AWS_ACCESS_KEY_ID: optional(),
   AWS_SECRET_ACCESS_KEY: optional(),
   PORTKEY_API_KEY: optional(),

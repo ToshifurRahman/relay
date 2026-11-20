@@ -52,7 +52,7 @@ or the process stops at startup with a message that names the missing variable.
 | `SQS_QUEUE_NAME`          | yes      | Main queue the worker reads.                                           | chosen name, set in the Render dashboard |
 | `SQS_DLQ_NAME`            | no       | Dead-letter queue. Defaults to `<SQS_QUEUE_NAME>-dlq`.                 | same                                     |
 | `WORKER_CONCURRENCY`      | no       | Tickets one worker processes at once. Default 10.                      | same                                     |
-| `AWS_REGION`              | no       | AWS region for SQS and SNS. Default `us-east-1`.                       | same                                     |
+| `AWS_REGION`              | no       | AWS region for SQS and SNS. Default `ap-south-1`.                      | same                                     |
 | `AWS_ACCESS_KEY_ID`       | yes      | Access key of the `ticket-runtime` identity.                           | set in the Render dashboard              |
 | `AWS_SECRET_ACCESS_KEY`   | yes      | Secret key of the `ticket-runtime` identity.                           | set in the Render dashboard              |
 | `PORTKEY_API_KEY`         | yes      | Portkey gateway key. Required while `LLM_MODE` is real.                | set in the Render dashboard              |

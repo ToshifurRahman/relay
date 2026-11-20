@@ -41,7 +41,7 @@ describe('parseEnv', () => {
     if (!result.success) return;
     expect(result.data).toMatchObject({
       PORT: 3000,
-      AWS_REGION: 'us-east-1',
+      AWS_REGION: 'ap-south-1',
       WORKER_CONCURRENCY: 10,
       AI_TIMEOUT_MS: 30000,
       LLM_FAKE_DELAY_MS: 1500,
@@ -294,7 +294,7 @@ describe('scriptConfig', () => {
       SQS_QUEUE_NAME: 'q',
       SQS_DLQ_NAME: 'q-dlq',
       AWS_ACCESS_KEY_ID: 'test',
-      AWS_REGION: 'us-east-1',
+      AWS_REGION: 'ap-south-1',
     });
   });
 

@@ -114,7 +114,7 @@ describe('queue service', () => {
     const client = mocks.sqsClients[0] as { options: Record<string, unknown>; send: unknown };
     expect(client.options).toMatchObject({
       endpoint: process.env.SQS_ENDPOINT,
-      region: 'us-east-1',
+      region: 'ap-south-1',
       credentials: { accessKeyId: 'test', secretAccessKey: 'test' },
     });
     // GetQueueUrl once, then one send per ticket.
