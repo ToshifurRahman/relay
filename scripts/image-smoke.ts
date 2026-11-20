@@ -176,9 +176,11 @@ async function checkDeployCommand() {
   if (!line || /['"`&|]/.test(line)) {
     fail(`render.yaml has a quoted or chained dockerCommand: ${line}`);
   }
+  // `sh scripts/start.sh`: the program is plain `sh`, the script is its single argument, and the
+  // container's WORKDIR (/app/apps/api) is what makes the relative path resolve.
   const [program, ...commandArgs] = line.split(/\s+/);
-  if (!program?.endsWith('scripts/start.sh')) {
-    fail(`the deploy command is not the start script: ${line}`);
+  if (program !== 'sh' || commandArgs.length !== 1 || commandArgs[0] !== 'scripts/start.sh') {
+    fail(`the deploy command is not "sh scripts/start.sh": ${line}`);
   }
   console.log(`command: ${line}`);
 
