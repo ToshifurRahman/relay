@@ -7,6 +7,7 @@ import { assertOpsTokenConfigured } from './lib/ops-session.js';
 import { init as initSocket, shutdown as shutdownSocket, warmEmitter } from './lib/socket.js';
 import { onShutdownSignal, runShutdown } from './lifecycle.js';
 import { httpCloser, startServer } from './server.js';
+import { drainBackgroundWork } from './services/background-work.js';
 import { startRetentionSweep } from './services/ticket-retention.js';
 import { run } from './worker.js';
 
@@ -76,6 +77,9 @@ export async function main(options: MainOptions = {}): Promise<void> {
           return workerDone;
         },
       },
+      // Emails and alerts the worker started without awaiting (REL-05). Runs after the worker
+      // drains, so no new ones start, and before the pool closes, so a delivery can still record.
+      { name: 'background-work', run: drainBackgroundWork },
       { name: 'retention-sweep', run: stopRetentionSweep },
       { name: 'socket-redis', run: shutdownSocket },
       { name: 'http-closed', run: () => http.finish() },

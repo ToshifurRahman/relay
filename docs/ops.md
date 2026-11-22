@@ -156,3 +156,30 @@ its output is missing, the stage runs again.
 | `503`    | The message could not be sent to the queue. The ticket is put back exactly as it was, `ticket.requeue_failed` is recorded, and it can be replayed again. |
 
 There is no limit on how many times a ticket can be replayed; every replay is in its history.
+
+## Neon restore (free tier)
+
+Story 7.12.3 parked item. Neon keeps a **6-hour** change-history window on the Free plan; paid plans
+extend it (up to 7 days on Launch, 30 days on Scale). Within that window you can roll a branch back to
+any point in time (instant restore) or create a restore branch from a past state. Beyond 6 hours there
+is no recovery point: a bad migration or a mistaken delete older than that cannot be undone from Neon
+alone. This is the practical recovery boundary for the free tier.
+
+The dry run below is read-only until the last step; run it against a throwaway branch, never the
+production branch, and never as part of a live incident without a second person watching.
+
+1. List the project's branches and their current state:
+   `neonctl branches list --project-id <project-id>`
+2. Find the point to restore to (the 6-hour window is the hard limit):
+   `neonctl branches list --project-id <project-id> --output json` shows each branch's `created_at`
+   and `updated_at`; the console's **Restore** view shows the exact timeline.
+3. Create a restore branch from that point (does not touch the live branch):
+   `neonctl branches create --project-id <project-id> --name restore-<date> --parent <branch> --parent-timestamp <ISO-8601>`
+4. Point a throwaway `DATABASE_URL` at the restore branch and run `bun --filter @relay/api migrate`
+   plus a read-only query to confirm the data is what you expect.
+5. Only after that, and with the incident owner's approval, roll the live branch back:
+   `neonctl branches restore <branch> --source-branch-id <branch-id> --timestamp <ISO-8601>`.
+
+The app's own retention sweep hard-deletes tickets older than 30 days (`services/ticket-retention.ts`),
+so a restore older than the retention window brings back rows the sweep will delete again on its next
+hourly run. Restore is for recent mistakes, not for long-term history.

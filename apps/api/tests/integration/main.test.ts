@@ -76,4 +76,20 @@ describe('combined main entry point', () => {
       socket.close();
     }
   }, 60_000);
+
+  it('drains background emails and alerts before closing the pool (REL-05)', async () => {
+    entry = await startEntry('src/main.ts');
+    await waitForHealth(entry);
+
+    expect(await entry.terminate()).toBe(0);
+    const output = entry.output();
+    // The step runs after the worker drains and before Postgres closes, so a delivery that was
+    // still in flight can finish and record its outcome. The spawned process logs through
+    // pino-pretty (NODE_ENV=test), which wraps the field name in ANSI codes, so match the value.
+    const background = output.indexOf('"background-work"');
+    const postgres = output.indexOf('"postgres"');
+    expect(background).toBeGreaterThan(-1);
+    expect(postgres).toBeGreaterThan(background);
+    expect(output).toContain('Shutdown complete');
+  }, 60_000);
 });

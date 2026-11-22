@@ -7,6 +7,10 @@ import { logger } from './logger.js';
 export const OPS_SESSION_COOKIE = 'ops_session';
 // A fixed lifetime: the Redis TTL and the cookie's Max-Age are the same and never extended.
 export const SESSION_TTL_S = 12 * 60 * 60;
+// Story 7.12.3 (REL-04): the lazy client queues commands while it is disconnected, so a Redis
+// outage made every sign-in, session check and sign-out hang instead of failing. The request
+// path gives up within this bound, like the counters already do (lib/counters.ts).
+export const OPS_SESSION_TIMEOUT_MS = 2000;
 
 const MAX_FAILED_SIGN_INS = 5;
 const SIGN_IN_WINDOW_S = 15 * 60;
@@ -54,6 +58,26 @@ export async function closeOpsSessionStore(): Promise<void> {
   if (current) await Promise.allSettled([current.quit()]);
 }
 
+/**
+ * Bounds a Redis command so a disconnected client's queued command cannot hang the request.
+ * The command itself is not cancelled (node-redis has no per-command abort); the caller simply
+ * stops waiting, which is what the request path needs.
+ */
+async function within<T>(work: Promise<T>, timeoutMs: number = OPS_SESSION_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`Ops session store did not answer within ${timeoutMs}ms`)),
+      timeoutMs
+    );
+  });
+  try {
+    return await Promise.race([work, timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** In production the token must be set and long enough that guessing is infeasible. */
 export function assertOpsTokenConfigured(): void {
   const [message] = collectIssues(['OPS_TOKEN']);
@@ -72,16 +96,18 @@ export function checkOpsToken(candidate: string): boolean {
 
 export async function createSession(): Promise<{ id: string; expiresAt: Date }> {
   const id = randomBytes(32).toString('base64url');
-  await redis().set(sessionKey(hashSessionId(id)), JSON.stringify({ createdAt: Date.now() }), {
-    EX: SESSION_TTL_S,
-  });
+  await within(
+    redis().set(sessionKey(hashSessionId(id)), JSON.stringify({ createdAt: Date.now() }), {
+      EX: SESSION_TTL_S,
+    })
+  );
   return { id, expiresAt: new Date(Date.now() + SESSION_TTL_S * 1000) };
 }
 
 export async function lookupSession(id: string | undefined): Promise<OpsSession | null> {
   if (!id) return null;
   const hash = hashSessionId(id);
-  const ttlMs = await redis().pTTL(sessionKey(hash));
+  const ttlMs = await within(redis().pTTL(sessionKey(hash)));
   // -2: no such key. -1: a key with no expiry, which this module never writes.
   if (ttlMs <= 0) return null;
   return { hash, expiresAt: new Date(Date.now() + ttlMs) };
@@ -89,7 +115,7 @@ export async function lookupSession(id: string | undefined): Promise<OpsSession 
 
 export async function destroySession(id: string): Promise<string> {
   const hash = hashSessionId(id);
-  await redis().del(sessionKey(hash));
+  await within(redis().del(sessionKey(hash)));
   return hash;
 }
 
@@ -103,13 +129,13 @@ export function sessionIdFromCookieHeader(header: string | undefined): string | 
 }
 
 export async function isSignInLocked(ip: string): Promise<boolean> {
-  const count = Number(await redis().get(failureKey(ip)));
+  const count = Number(await within(redis().get(failureKey(ip))));
   return count >= MAX_FAILED_SIGN_INS;
 }
 
 export async function recordFailedSignIn(ip: string): Promise<void> {
   const key = failureKey(ip);
-  const count = await redis().incr(key);
+  const count = await within(redis().incr(key));
   // The window starts at the first failure; later ones don't extend it.
-  if (count === 1) await redis().expire(key, SIGN_IN_WINDOW_S);
+  if (count === 1) await within(redis().expire(key, SIGN_IN_WINDOW_S));
 }

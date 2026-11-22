@@ -80,7 +80,18 @@ describe('db pool', () => {
     await pool.query('select 2');
     await pool.end();
     expect(mocks.pools).toHaveLength(1);
-    expect(mocks.pools[0].options).toEqual({ connectionString: process.env.DATABASE_URL });
+    const options = mocks.pools[0].options as Record<string, unknown>;
+    expect(options.connectionString).toBe(process.env.DATABASE_URL);
+    // Story 7.12.3 (REL-03): every wait on Postgres is bounded.
+    for (const key of [
+      'connectionTimeoutMillis',
+      'statement_timeout',
+      'query_timeout',
+      'idleTimeoutMillis',
+      'max',
+    ]) {
+      expect(typeof options[key]).toBe('number');
+    }
     expect(mocks.pools[0].query).toHaveBeenCalledTimes(2);
     expect(mocks.pools[0].end).toHaveBeenCalledTimes(1);
   });

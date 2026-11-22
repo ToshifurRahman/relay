@@ -40,6 +40,7 @@ import {
   markTicketFailed,
   markTicketNeedsAttention,
 } from './repositories/tickets.js';
+import { drainBackgroundWork } from './services/background-work.js';
 import { notifyIfDue } from './services/customer-notifications.js';
 import { alertNeedsAttention } from './services/ops-alerts.js';
 import {
@@ -523,6 +524,8 @@ if (import.meta.main) {
           return workerDone;
         },
       },
+      // Emails and alerts started without awaiting (REL-05), drained before the pool closes.
+      { name: 'background-work', run: drainBackgroundWork },
       { name: 'retention-sweep', run: stopRetentionSweep },
       { name: 'socket-redis', run: shutdownSocket },
       { name: 'postgres', run: () => pool.end() },

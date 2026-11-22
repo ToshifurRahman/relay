@@ -99,6 +99,67 @@ describe('rules at startup', () => {
     expect(stderr).toContain('LLM_MODE=fake is not allowed when NODE_ENV=production');
   });
 
+  // Story 7.12.3 (check 7): every entry point that can serve production traffic must refuse the
+  // same unsafe settings, not only the API. A worker or combined process that started with
+  // LLM_MODE=fake or MAIL_DRIVER=memory would process real tickets with canned output or drop
+  // every customer email.
+  describe.each(ENTRIES)('%s refuses unsafe production settings', (script) => {
+    it('refuses LLM_MODE=fake in production', () => {
+      const { status, stderr } = start(script, { ...VALID, NODE_ENV: 'production' });
+      expect(status).toBe(1);
+      expect(stderr).toContain('LLM_MODE=fake is not allowed when NODE_ENV=production');
+    });
+
+    it('refuses MAIL_DRIVER=memory in production', () => {
+      const { status, stderr } = start(script, {
+        ...VALID,
+        NODE_ENV: 'production',
+        LLM_MODE: 'real',
+        GOOGLE_API_KEY: 'g',
+        PORTKEY_API_KEY: 'p',
+        MAIL_DRIVER: 'memory',
+        PUBLIC_SITE_URL: 'https://relay.test',
+        TURNSTILE_SECRET_KEY: 'secret',
+        OPS_TOKEN: 'x'.repeat(32),
+      });
+      expect(status).toBe(1);
+      expect(stderr).toContain('MAIL_DRIVER must be brevo (or unset) in production');
+    });
+
+    it('refuses a short OPS_TOKEN in production', () => {
+      const { status, stderr } = start(script, {
+        ...VALID,
+        NODE_ENV: 'production',
+        LLM_MODE: 'real',
+        GOOGLE_API_KEY: 'g',
+        PORTKEY_API_KEY: 'p',
+        MAIL_DRIVER: 'brevo',
+        BREVO_API_KEY: 'b',
+        PUBLIC_SITE_URL: 'https://relay.test',
+        TURNSTILE_SECRET_KEY: 'secret',
+        OPS_TOKEN: 'short',
+      });
+      expect(status).toBe(1);
+      expect(stderr).toContain('OPS_TOKEN must be set to at least 32 characters in production');
+    });
+
+    it('refuses a missing TURNSTILE_SECRET_KEY in production', () => {
+      const { status, stderr } = start(script, {
+        ...VALID,
+        NODE_ENV: 'production',
+        LLM_MODE: 'real',
+        GOOGLE_API_KEY: 'g',
+        PORTKEY_API_KEY: 'p',
+        MAIL_DRIVER: 'brevo',
+        BREVO_API_KEY: 'b',
+        PUBLIC_SITE_URL: 'https://relay.test',
+        OPS_TOKEN: 'x'.repeat(32),
+      });
+      expect(status).toBe(1);
+      expect(stderr).toContain('TURNSTILE_SECRET_KEY: required when NODE_ENV=production');
+    });
+  });
+
   it('asks for AWS keys by name when there is no SQS_ENDPOINT', () => {
     const withoutEndpoint: Record<string, string> = { ...VALID };
     delete withoutEndpoint.SQS_ENDPOINT;
