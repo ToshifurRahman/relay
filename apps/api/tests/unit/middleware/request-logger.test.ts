@@ -113,4 +113,21 @@ describe('request logger on the web confirmation route', () => {
     await webApp.request('/confirm', { headers: { accept: 'text/html' } });
     expect(info).toHaveBeenCalledWith(expect.objectContaining({ path: '/confirm' }), 'request');
   });
+
+  // The SPA fallback serves any casing of the route, so `/CONFIRM/<token>` reaches the logger with
+  // a real token in the path. The emailed link is lowercase, but a redaction that only matches the
+  // spelling the app happens to emit is one refactor away from leaking.
+  it.each(['/CONFIRM/UPPERTOKEN123', '/Confirm/MixedTOKEN123'])(
+    'never logs the token from %s',
+    async (path) => {
+      const res = await webApp.request(path, { headers: { accept: 'text/html' } });
+      expect(res.status).toBe(200);
+      const logged = JSON.stringify(info.mock.calls);
+      expect(logged).not.toContain('TOKEN123');
+      expect(info).toHaveBeenCalledWith(
+        expect.objectContaining({ path: '/confirm/:token' }),
+        'request'
+      );
+    }
+  );
 });
