@@ -14,7 +14,7 @@ Low may ship only as an accepted risk with a reason. Finding IDs are `SEC-NN`.
 | -------- | ----- | ----- | -------- | ---- |
 | Critical | 0     | 0     | 0        | 0    |
 | High     | 2     | 2     | 0        | 0    |
-| Medium   | 3     | 1     | 2        | 0    |
+| Medium   | 3     | 2     | 1        | 0    |
 | Low      | 3     | 1     | 2        | 0    |
 
 No Critical or High finding is open. Both High findings were fixed on this branch, each with a
