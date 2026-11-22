@@ -54,10 +54,12 @@ const sourceFiles = filesUnder(SRC, ['.ts', '.tsx']);
 
 let dist: string;
 let bundleFiles: string[];
+let previousSiteKey: string | undefined;
 
 beforeAll(async () => {
   dist = mkdtempSync(path.join(tmpdir(), 'bundle-secrets-'));
   // Cloudflare's published always-pass site key, so the build needs no real configuration.
+  previousSiteKey = process.env.VITE_TURNSTILE_SITE_KEY;
   process.env.VITE_TURNSTILE_SITE_KEY = '1x00000000000000000000AA';
   await build({
     root: WEB,
@@ -69,6 +71,10 @@ beforeAll(async () => {
 
 afterAll(() => {
   rmSync(dist, { recursive: true, force: true });
+  // Restore the environment the suite found, including the absent case, so a later test in this
+  // worker does not inherit a value it never set.
+  if (previousSiteKey === undefined) delete process.env.VITE_TURNSTILE_SITE_KEY;
+  else process.env.VITE_TURNSTILE_SITE_KEY = previousSiteKey;
 });
 
 describe('client bundle secrets', () => {
