@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { maskEmail } from '../domain/mask-email.js';
 import { getConfig } from '../lib/config.js';
-import { hit } from '../lib/counters.js';
+import { hitWithin } from '../lib/counters.js';
 import { logger } from '../lib/logger.js';
 import { getMailer, isMailEnabled, type MailMessage } from '../lib/mailer.js';
 import {
@@ -76,7 +76,8 @@ export async function getNotificationView(ticketId: string): Promise<Notificatio
 async function underDailyCap(): Promise<boolean> {
   const cap = getConfig().MAIL_DAILY_CAP;
   const day = new Date().toISOString().slice(0, 10);
-  return (await hit(`notify:sent:${day}`, DAY_S)) <= cap;
+  // Bounded like the submission counters: a hung Redis must not hold a request or a delivery.
+  return (await hitWithin(`notify:sent:${day}`, DAY_S)) <= cap;
 }
 
 export async function requestNotification(
@@ -95,7 +96,7 @@ export async function requestNotification(
   if (ticket.status === 'completed')
     throw new NotificationError(409, 'This ticket already has its reply');
 
-  if ((await hit(`notify:optin:${ip}`, HOUR_S)) > OPT_IN_LIMIT_PER_HOUR) {
+  if ((await hitWithin(`notify:optin:${ip}`, HOUR_S)) > OPT_IN_LIMIT_PER_HOUR) {
     throw new NotificationError(429, 'Too many requests, try again later');
   }
 
@@ -214,17 +215,26 @@ async function deliver(ticket: Ticket, kind: Kind, email: string): Promise<void>
   let code: string | null = 'send_failed';
   if (!mailer) {
     code = 'mail_off';
-  } else if (!(await underDailyCap().catch(() => true))) {
-    code = 'quota';
   } else {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        await mailer.send(message);
-        code = null;
-        break;
-      } catch {
-        if (attempt >= retryDelaysMs.length) break;
-        await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
+    let underCap: boolean;
+    try {
+      underCap = await underDailyCap();
+    } catch {
+      // The counter cannot vouch for the daily budget, so nothing is sent: fail closed.
+      underCap = false;
+    }
+    if (!underCap) {
+      code = 'quota';
+    } else {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await mailer.send(message);
+          code = null;
+          break;
+        } catch {
+          if (attempt >= retryDelaysMs.length) break;
+          await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
+        }
       }
     }
   }
