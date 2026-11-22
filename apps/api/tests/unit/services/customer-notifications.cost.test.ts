@@ -99,4 +99,18 @@ describe('customer-email free-tier guard', () => {
     expect(view.state).toBe('pending');
     expect(counters.hitWithin).toHaveBeenCalledWith('notify:optin:203.0.113.9', 3600);
   });
+
+  it('returns a 503 when the opt-in limiter cannot answer', async () => {
+    tickets.getTicketById.mockResolvedValue({ ...ticket, status: 'queued' });
+    counters.hitWithin.mockRejectedValue(new Error('Redis timeout'));
+    setMailerForTests({ send: vi.fn(async () => {}) });
+
+    await expect(
+      requestNotification(ticket.id, 'customer@example.test', '203.0.113.9')
+    ).rejects.toMatchObject({
+      status: 503,
+      message: "We can't accept new requests right now. Please try again shortly.",
+    });
+    expect(notifications.insertSubscription).not.toHaveBeenCalled();
+  });
 });

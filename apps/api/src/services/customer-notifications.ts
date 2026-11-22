@@ -24,6 +24,7 @@ import {
   buildSnagEmail,
   type EmailContext,
 } from './notification-emails.js';
+import { REFUSAL_MESSAGES } from './submission-guard.js';
 import { recordTicketEvent } from './ticket-events.js';
 import { emitTicketUpdate } from './ticket-updates.js';
 
@@ -96,7 +97,14 @@ export async function requestNotification(
   if (ticket.status === 'completed')
     throw new NotificationError(409, 'This ticket already has its reply');
 
-  if ((await hitWithin(`notify:optin:${ip}`, HOUR_S)) > OPT_IN_LIMIT_PER_HOUR) {
+  let optIns: number;
+  try {
+    optIns = await hitWithin(`notify:optin:${ip}`, HOUR_S);
+  } catch (err) {
+    logger.error({ err }, 'Notification opt-in counter unavailable');
+    throw new NotificationError(503, REFUSAL_MESSAGES.unavailable);
+  }
+  if (optIns > OPT_IN_LIMIT_PER_HOUR) {
     throw new NotificationError(429, 'Too many requests, try again later');
   }
 
