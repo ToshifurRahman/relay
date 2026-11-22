@@ -1,11 +1,16 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import { Hono } from 'hono';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { debug, info } = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn() }));
 
 vi.mock('../../../src/lib/logger.js', () => ({ logger: { debug, info } }));
 
 import { type AppEnv, requestLogger } from '../../../src/middleware/request-logger.js';
+import { mountWebApp } from '../../../src/middleware/web-app.js';
 
 const app = new Hono<AppEnv>();
 app.use('*', requestLogger);
@@ -69,5 +74,43 @@ describe('request logger levels', () => {
       expect.objectContaining({ path: '/api/notifications/confirm' }),
       'request'
     );
+  });
+});
+
+// The link the customer actually clicks is `${siteUrl()}/confirm/${token}`
+// (services/customer-notifications.ts), served by the web app's `confirm/:token` route, not by
+// the API preview path above. The logger runs before the web app is mounted, so it sees that
+// path too, and it must redact it the same way.
+describe('request logger on the web confirmation route', () => {
+  let dist: string;
+  const webApp = new Hono<AppEnv>();
+
+  beforeAll(() => {
+    dist = mkdtempSync(path.join(tmpdir(), 'confirm-route-'));
+    writeFileSync(path.join(dist, 'index.html'), '<!doctype html><title>app shell</title>');
+    webApp.use('*', requestLogger);
+    mountWebApp(webApp, dist);
+  });
+
+  afterAll(() => {
+    rmSync(dist, { recursive: true, force: true });
+  });
+
+  it('never logs the token from the emailed /confirm/<token> link', async () => {
+    const res = await webApp.request('/confirm/REALEMAILTOKEN999', {
+      headers: { accept: 'text/html' },
+    });
+    expect(res.status).toBe(200);
+    const logged = JSON.stringify(info.mock.calls);
+    expect(logged).not.toContain('REALEMAILTOKEN999');
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/confirm/:token' }),
+      'request'
+    );
+  });
+
+  it('leaves the bare /confirm route alone', async () => {
+    await webApp.request('/confirm', { headers: { accept: 'text/html' } });
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ path: '/confirm' }), 'request');
   });
 });
