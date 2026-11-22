@@ -1,36 +1,26 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { build } from 'vite';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { ENV_KEYS } from '../../../api/src/lib/config.js';
 
 // SEC-05: nothing the server keeps private may reach the browser. The web app is bundled from
 // apps/web/src alone, so two things are checked: the source never names a server-only variable or
-// imports server code, and the built bundle (when it exists) carries none of those names either.
+// imports server code, and the built bundle carries none of those names either.
+//
+// The bundle check builds the app into a temp directory on every run rather than reading
+// apps/web/dist. dist is gitignored and CI's web-test step never builds it, so a check that
+// skipped when dist was absent would silently pass in CI — the one place it has to hold.
 const WEB = path.resolve(import.meta.dirname, '../..');
 const SRC = path.join(WEB, 'src');
-const DIST = path.join(WEB, 'dist');
 
-// Every variable apps/api/src/lib/config.ts reads. None of them may be referenced by the client.
-const SERVER_VARIABLES = [
-  'DATABASE_URL',
-  'DATABASE_DIRECT_URL',
-  'REDIS_URL',
-  'SQS_ENDPOINT',
-  'SQS_QUEUE_NAME',
-  'SQS_DLQ_NAME',
-  'AWS_ACCESS_KEY_ID',
-  'AWS_SECRET_ACCESS_KEY',
-  'PORTKEY_API_KEY',
-  'GOOGLE_API_KEY',
-  'GROQ_API_KEY',
-  'BACKUP_API_KEY',
-  'OPS_TOKEN',
-  'SNS_ENDPOINT',
-  'SNS_TOPIC_ARN',
-  'BREVO_API_KEY',
-  'TURNSTILE_SECRET_KEY',
-  'SMTP_URL',
-];
+// Every variable the API's config schema reads, taken from the schema itself so the list cannot
+// drift from apps/api/src/lib/config.ts. None of them may be referenced by the client. Matched on
+// word boundaries: a bare `PORT` would otherwise hit `SUPPORT` or `EXPORT`.
+const SERVER_VARIABLES = ENV_KEYS.map((key) => new RegExp(`\\b${key}\\b`));
 
 // Shapes a real credential takes, so a value pasted into the source is caught even unnamed.
 const SECRET_SHAPES = [
@@ -42,7 +32,6 @@ const SECRET_SHAPES = [
 ];
 
 function filesUnder(dir: string, extensions: string[]): string[] {
-  if (!existsSync(dir)) return [];
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) return filesUnder(full, extensions);
@@ -50,64 +39,62 @@ function filesUnder(dir: string, extensions: string[]): string[] {
   });
 }
 
+function offendersIn(files: string[], patterns: (string | RegExp)[]): string[] {
+  return files
+    .filter((file) => {
+      const text = readFileSync(file, 'utf8');
+      return patterns.some((pattern) =>
+        typeof pattern === 'string' ? text.includes(pattern) : pattern.test(text)
+      );
+    })
+    .map((file) => path.relative(WEB, file));
+}
+
 const sourceFiles = filesUnder(SRC, ['.ts', '.tsx']);
-const bundleFiles = filesUnder(DIST, ['.js', '.css', '.html', '.json']);
+
+let dist: string;
+let bundleFiles: string[];
+
+beforeAll(async () => {
+  dist = mkdtempSync(path.join(tmpdir(), 'bundle-secrets-'));
+  // Cloudflare's published always-pass site key, so the build needs no real configuration.
+  process.env.VITE_TURNSTILE_SITE_KEY = '1x00000000000000000000AA';
+  await build({
+    root: WEB,
+    logLevel: 'error',
+    build: { outDir: dist, emptyOutDir: true },
+  });
+  bundleFiles = filesUnder(dist, ['.js', '.css', '.html', '.json']);
+}, 180_000);
+
+afterAll(() => {
+  rmSync(dist, { recursive: true, force: true });
+});
 
 describe('client bundle secrets', () => {
   it('scans the files it claims to (the scan is not empty)', () => {
     expect(sourceFiles.length).toBeGreaterThan(50);
+    expect(bundleFiles.length).toBeGreaterThan(0);
   });
 
   it('never names a server-only variable in the client source', () => {
-    const offenders = sourceFiles
-      .filter((file) => {
-        const text = readFileSync(file, 'utf8');
-        return SERVER_VARIABLES.some((name) => text.includes(name));
-      })
-      .map((file) => path.relative(WEB, file));
-    expect(offenders).toEqual([]);
+    expect(offendersIn(sourceFiles, SERVER_VARIABLES)).toEqual([]);
   });
 
   it('never imports server code', () => {
-    const offenders = sourceFiles
-      .filter((file) =>
-        /from\s+['"][^'"]*(apps\/api|@relay\/api)[^'"]*['"]/.test(readFileSync(file, 'utf8'))
-      )
-      .map((file) => path.relative(WEB, file));
-    expect(offenders).toEqual([]);
+    const serverImport = /from\s+['"][^'"]*(apps\/api|@relay\/api)[^'"]*['"]/;
+    expect(offendersIn(sourceFiles, [serverImport])).toEqual([]);
   });
 
   it('carries no credential shape in the client source', () => {
-    const offenders = sourceFiles
-      .filter((file) => {
-        const text = readFileSync(file, 'utf8');
-        return SECRET_SHAPES.some((shape) => shape.test(text));
-      })
-      .map((file) => path.relative(WEB, file));
-    expect(offenders).toEqual([]);
+    expect(offendersIn(sourceFiles, SECRET_SHAPES)).toEqual([]);
   });
 
-  // The build is not part of every test run, so this only runs when dist/ exists (CI builds it
-  // before the suite; a bare `vitest` run may not have).
-  it.skipIf(!existsSync(DIST))(
-    'carries no server variable or credential in the built bundle',
-    () => {
-      expect(bundleFiles.length).toBeGreaterThan(0);
-      const offenders = bundleFiles
-        .filter((file) => {
-          const text = readFileSync(file, 'utf8');
-          return (
-            SERVER_VARIABLES.some((name) => text.includes(name)) ||
-            SECRET_SHAPES.some((shape) => shape.test(text))
-          );
-        })
-        .map((file) => path.relative(WEB, file));
-      expect(offenders).toEqual([]);
-    }
-  );
+  it('carries no server variable or credential in the built bundle', () => {
+    expect(offendersIn(bundleFiles, [...SERVER_VARIABLES, ...SECRET_SHAPES])).toEqual([]);
+  });
 
-  it.skipIf(!existsSync(DIST))('ships no source map', () => {
-    const maps = filesUnder(DIST, ['.map']);
-    expect(maps.map((file) => path.relative(WEB, file))).toEqual([]);
+  it('ships no source map', () => {
+    expect(filesUnder(dist, ['.map']).map((file) => path.relative(WEB, file))).toEqual([]);
   });
 });
