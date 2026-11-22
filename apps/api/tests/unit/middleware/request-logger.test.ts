@@ -41,4 +41,33 @@ describe('request logger levels', () => {
       'request'
     );
   });
+
+  // SEC-01: the confirmation link's token is a bearer credential. It travels in the path, so a
+  // plain `path` field would write it to the production log stream, where anyone with log access
+  // could confirm a subscription. The logged path keeps the route and drops the token.
+  it('never logs the confirmation token from the path', async () => {
+    await app.request('/api/notifications/confirm/SUPERSECRETTOKEN123');
+    const logged = JSON.stringify(info.mock.calls);
+    expect(logged).not.toContain('SUPERSECRETTOKEN123');
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/api/notifications/confirm/:token' }),
+      'request'
+    );
+  });
+
+  it('keeps the rest of the path intact when redacting', async () => {
+    await app.request('/api/notifications/confirm/abc/extra');
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/api/notifications/confirm/:token/extra' }),
+      'request'
+    );
+  });
+
+  it('leaves paths that are not confirmation links alone', async () => {
+    await app.request('/api/notifications/confirm');
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/api/notifications/confirm' }),
+      'request'
+    );
+  });
 });
