@@ -10,6 +10,7 @@ import {
   getPrimaryProvider,
   isBackupConfigured,
   LlmCallError,
+  type LlmOutcome,
   type LlmProvider,
   triage as triageLlm,
   type TriageOutput,
@@ -27,7 +28,11 @@ export class AIService {
     try {
       await this.recorder(record);
     } catch (err) {
-      logger.error({ err, record }, 'Failed to persist AI interaction record');
+      // The record itself holds only ids and codes; the database error's text is not logged.
+      logger.error(
+        { ticketId: record.ticketId, operation: record.operation, errName: errorName(err) },
+        'Failed to persist AI interaction record'
+      );
     }
   }
 
@@ -63,7 +68,9 @@ export class AIService {
       const durationMs = Math.round(performance.now() - start);
       const outcome = err instanceof LlmCallError ? err.outcome : 'network_error';
       const httpStatus = err instanceof LlmCallError ? err.httpStatus : undefined;
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      // Only an LlmCallError's message is built from fixed codes. Anything else can carry the
+      // provider's own text, so only its name is recorded (story 7.12.2).
+      const errorMessage = err instanceof LlmCallError ? err.message : errorName(err);
       await this.recordInteraction({
         ticketId,
         operation,
@@ -82,7 +89,8 @@ export class AIService {
           model: provider.model,
           durationMs,
           outcome,
-          err,
+          httpStatus,
+          errName: errorName(err),
         },
         'AI call failed'
       );
@@ -99,30 +107,34 @@ export class AIService {
       );
       return mapTriageOutput(output);
     } catch (primaryError) {
-      const primaryErrorMessage =
-        primaryError instanceof Error ? primaryError.message : String(primaryError);
       if (!isBackupConfigured()) {
         logger.warn(
-          `Primary AI service failed for ticket ${ticketId} and backup is not configured: ${primaryErrorMessage}`
+          { ticketId, operation: 'triage', outcome: errorOutcome(primaryError) },
+          'Primary AI service failed and backup is not configured'
         );
         throw primaryError;
       }
 
       logger.warn(
-        `Primary AI service failed for ticket ${ticketId}, trying backup: ${primaryErrorMessage}`
+        { ticketId, operation: 'triage', outcome: errorOutcome(primaryError) },
+        'Primary AI service failed, trying backup'
       );
       const backup = getBackupProvider();
       try {
         const output = await this.attempt(ticketId, 'triage', backup, () =>
           triageLlm(backup, subject, description)
         );
-        logger.info(`Backup AI service succeeded for ticket ${ticketId}`);
+        logger.info({ ticketId, operation: 'triage' }, 'Backup AI service succeeded');
         return mapTriageOutput(output);
       } catch (backupError) {
-        const backupErrorMessage =
-          backupError instanceof Error ? backupError.message : String(backupError);
         logger.error(
-          `Both primary and backup AI services failed for ticket ${ticketId}. Primary: ${primaryErrorMessage}, Backup: ${backupErrorMessage}`
+          {
+            ticketId,
+            operation: 'triage',
+            primaryOutcome: errorOutcome(primaryError),
+            backupOutcome: errorOutcome(backupError),
+          },
+          'Both primary and backup AI services failed'
         );
         throw primaryError; // Throw primary error to maintain existing behavior
       }
@@ -152,35 +164,49 @@ export class AIService {
       );
       return mapDraftOutput(output);
     } catch (primaryError) {
-      const primaryErrorMessage =
-        primaryError instanceof Error ? primaryError.message : String(primaryError);
       if (!isBackupConfigured()) {
         logger.warn(
-          `Primary AI service failed for ticket ${ticketId} draft and backup is not configured: ${primaryErrorMessage}`
+          { ticketId, operation: 'draft', outcome: errorOutcome(primaryError) },
+          'Primary AI service failed and backup is not configured'
         );
         throw primaryError;
       }
 
       logger.warn(
-        `Primary AI service failed for ticket ${ticketId} draft, trying backup: ${primaryErrorMessage}`
+        { ticketId, operation: 'draft', outcome: errorOutcome(primaryError) },
+        'Primary AI service failed, trying backup'
       );
       const backup = getBackupProvider();
       try {
         const output = await this.attempt(ticketId, 'draft', backup, () =>
           draftLlm(backup, subject, description, triageOutput)
         );
-        logger.info(`Backup AI service succeeded for ticket ${ticketId} draft`);
+        logger.info({ ticketId, operation: 'draft' }, 'Backup AI service succeeded');
         return mapDraftOutput(output);
       } catch (backupError) {
-        const backupErrorMessage =
-          backupError instanceof Error ? backupError.message : String(backupError);
         logger.error(
-          `Both primary and backup AI services failed for ticket ${ticketId} draft. Primary: ${primaryErrorMessage}, Backup: ${backupErrorMessage}`
+          {
+            ticketId,
+            operation: 'draft',
+            primaryOutcome: errorOutcome(primaryError),
+            backupOutcome: errorOutcome(backupError),
+          },
+          'Both primary and backup AI services failed'
         );
         throw primaryError; // Throw primary error to maintain existing behavior
       }
     }
   }
+}
+
+/** A fixed code for the log: never an error's own message, which can quote untrusted text. */
+function errorName(err: unknown): string {
+  const name = (err as { name?: unknown } | null)?.name;
+  return typeof name === 'string' && name ? name : 'Error';
+}
+
+function errorOutcome(err: unknown): LlmOutcome {
+  return err instanceof LlmCallError ? err.outcome : 'network_error';
 }
 
 function mapTriageOutput(triageOutput: TriageOutput): TriageResult {

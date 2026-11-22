@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   assertLlmModeAllowed,
@@ -40,6 +40,13 @@ function validTriageResponse(usage?: { prompt_tokens: number; completion_tokens:
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
+
+// These tests exercise the real fetch path. A developer shell can export LLM_MODE=fake, which
+// would make triage() return canned output and never call fetch, so pin the mode here.
+beforeEach(() => {
+  vi.stubEnv('LLM_MODE', 'real');
 });
 
 describe('triage (llm-client)', () => {
