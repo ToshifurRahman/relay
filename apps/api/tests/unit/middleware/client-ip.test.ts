@@ -61,4 +61,22 @@ describe('clientIp', () => {
   it('uses CF-Connecting-IP when X-Forwarded-For is absent', () => {
     expect(clientIp(headers({ 'cf-connecting-ip': '203.0.113.9' }))).toBe('203.0.113.9');
   });
+
+  // The header is only trusted when it holds a real address: a malformed value must not become
+  // the rate-limit or lockout key, or a caller could pick its own key by sending junk.
+  it.each([':::', '::::', '2001:db8:::1', '256.0.0.1', '1.2.3.4:80', '1.2.3', ''])(
+    'ignores the malformed CF-Connecting-IP %j',
+    (value) => {
+      expect(clientIp(headers({ 'x-forwarded-for': '192.0.2.7', 'cf-connecting-ip': value }))).toBe(
+        '192.0.2.7'
+      );
+    }
+  );
+
+  it('accepts a compressed and a full IPv6 address', () => {
+    expect(clientIp(headers({ 'cf-connecting-ip': '::1' }))).toBe('::1');
+    expect(
+      clientIp(headers({ 'cf-connecting-ip': '2001:0db8:0000:0000:0000:0000:0000:0001' }))
+    ).toBe('2001:0db8:0000:0000:0000:0000:0000:0001');
+  });
 });
