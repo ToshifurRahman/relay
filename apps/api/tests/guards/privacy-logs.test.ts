@@ -15,6 +15,30 @@ const rel = (file: string) => path.relative(SRC, file);
 
 const LOGGER_CALL = /logger\.(?:trace|debug|info|warn|error|fatal)\(/g;
 
+/** The same text with every string literal's body removed, so `...` in a message is not a spread. */
+function withoutStrings(source: string): string {
+  let out = '';
+  let inString: string | null = null;
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+    if (inString) {
+      if (ch === '\\') i++;
+      else if (ch === inString) {
+        inString = null;
+        out += ch;
+      }
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      inString = ch;
+      out += ch;
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
 /** The arguments of every logger call, from the opening paren to its matching close. */
 function loggerCalls(source: string): { args: string; templated: boolean; spreads: boolean }[] {
   const calls: { args: string; templated: boolean; spreads: boolean }[] = [];
@@ -42,8 +66,10 @@ function loggerCalls(source: string): { args: string; templated: boolean; spread
       args,
       // A backtick alone is just punctuation inside a fixed sentence; `${` is interpolation.
       templated: args.includes('${'),
-      // `{ ...row }` spreads every field (email, ticket text) onto the line at once.
-      spreads: /\{\s*\.\.\./.test(args),
+      // `{ ...row }` spreads every field (email, ticket text) onto the line at once, wherever it
+      // appears in the object — first property or after fixed ones such as `step`. String bodies
+      // are stripped first, so the `...` in a message like 'polling...' is not mistaken for one.
+      spreads: /\.\.\./.test(withoutStrings(args)),
     });
   }
   return calls;
@@ -88,6 +114,10 @@ describe('Pino log boundary (story 7.12.2)', () => {
 
     const spread = "logger.error({ ...row, step: 'x' }, 'Failed');";
     expect(loggerCalls(spread)[0].spreads).toBe(true);
+
+    // A spread that is not the first property must be caught too (review P2).
+    const trailingSpread = "logger.error({ ticketId, ...row }, 'Failed');";
+    expect(loggerCalls(trailingSpread)[0].spreads).toBe(true);
 
     // A fixed sentence with backticks in it is not interpolation.
     const fixed = "logger.warn({ dir: d }, 'run `bun build` first');";

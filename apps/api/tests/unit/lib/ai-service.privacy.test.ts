@@ -6,18 +6,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockTriage = vi.hoisted(() => vi.fn());
+const backup = vi.hoisted(() => ({ configured: false }));
 
 vi.mock('../../../src/lib/llm-client.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../../src/lib/llm-client.js')>();
   return {
     ...real,
     triage: mockTriage,
-    isBackupConfigured: () => false,
+    isBackupConfigured: () => backup.configured,
     getPrimaryProvider: () => ({
       name: 'primary',
       gateway: 'groq',
       apiKey: 'primary-key',
       model: 'primary-model',
+    }),
+    getBackupProvider: () => ({
+      name: 'backup',
+      gateway: 'google',
+      apiKey: 'backup-key',
+      model: 'backup-model',
     }),
   };
 });
@@ -32,6 +39,7 @@ let logged: string;
 
 beforeEach(() => {
   logged = '';
+  backup.configured = false;
   for (const level of ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const) {
     vi.spyOn(logger, level).mockImplementation((...args: unknown[]) => {
       logged += `${JSON.stringify(args)}\n`;
@@ -41,7 +49,7 @@ beforeEach(() => {
 });
 
 describe('AIService log boundary (story 7.12.2)', () => {
-  it('keeps provider error text out of the log when both the call and the backup fail', async () => {
+  it('keeps provider error text out of the log when the call fails and no backup is configured', async () => {
     mockTriage.mockRejectedValueOnce(
       new LlmCallError('http_error', `LLM call failed: 400 {"error":"${SENTINEL}"}`, 400)
     );
@@ -54,6 +62,26 @@ describe('AIService log boundary (story 7.12.2)', () => {
     expect(logged).not.toContain(SENTINEL);
     // The cause is still identifiable without the text.
     expect(logged).toContain('http_error');
+  });
+
+  it('logs outcome codes only when both the primary and the backup fail', async () => {
+    backup.configured = true;
+    mockTriage.mockRejectedValueOnce(
+      new LlmCallError('http_error', `primary failed: 500 {"error":"${SENTINEL}"}`, 500)
+    );
+    mockTriage.mockRejectedValueOnce(new LlmCallError('timeout', `backup failed: ${SENTINEL}`));
+    const recorder = vi.fn().mockResolvedValue(undefined);
+
+    await new AIService(recorder)
+      .triage('ticket-3', 'Subject', 'Description')
+      .catch(() => undefined);
+
+    expect(logged).not.toContain(SENTINEL);
+    // Both branches of the fallback were exercised and the both-fail line names each outcome.
+    expect(logged).toContain('Both primary and backup AI services failed');
+    expect(logged).toContain('primaryOutcome');
+    expect(logged).toContain('backupOutcome');
+    expect(logged).toContain('timeout');
   });
 
   it('keeps provider error text out of the log when recording the interaction fails', async () => {
