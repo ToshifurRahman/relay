@@ -8,24 +8,14 @@ export type AppEnv = { Variables: { requestId: string } };
 // `/healthy` is not quiet.
 const HEALTH_PATH = /^\/health(\/|$)/;
 
-// The confirmation link's token is a bearer credential: whoever holds it can confirm the
-// subscription. It travels in the path, so the logged path keeps the route and drops the token.
-// Two paths carry it: the API preview route (`/api/notifications/confirm/<token>`) and the link
-// the customer actually clicks, which the web app serves (`/confirm/<token>`). Matched without
-// case: the SPA fallback serves any spelling of the route, so `/CONFIRM/<token>` reaches the
-// logger with a real token too. The route is logged lowercased, so one route is one log value.
-const CONFIRM_TOKEN_PATH = /^\/(api\/notifications\/confirm|confirm)\/[^/]+/i;
-
-export function redactPath(path: string): string {
-  return path.replace(
-    CONFIRM_TOKEN_PATH,
-    (match, route: string) => `/${route.toLowerCase()}/:token`
-  );
-}
-
 // One structured line per request, tagged with a request id (the caller's `x-request-id`
 // when present) that is echoed back so a client report can be matched to a log line.
 // Health checks are logged at debug: orchestrators poll them constantly.
+//
+// The line records the matched route pattern, not the concrete URL: the confirmation token is a
+// bearer credential and the ticket reference is all anyone needs to open a ticket, so neither
+// may reach the log (stories 7.12.1 and 7.12.2). A path with no matched route (a 404, or a page
+// the SPA fallback serves) is logged as `unmatched`.
 export const requestLogger = createMiddleware<AppEnv>(async (c, next) => {
   const requestId = c.req.header('x-request-id') ?? crypto.randomUUID();
   c.set('requestId', requestId);
@@ -33,11 +23,14 @@ export const requestLogger = createMiddleware<AppEnv>(async (c, next) => {
   const start = performance.now();
   await next();
   const level = HEALTH_PATH.test(c.req.path) ? 'debug' : 'info';
+  // `mountWebApp` registers `app.use('*', staticFiles)` after every route, so the final match in
+  // the deployed image is always the wildcard. Take the last match that is not a wildcard.
+  const route = [...c.req.matchedRoutes].reverse().find((r) => !r.path.endsWith('*'))?.path;
   logger[level](
     {
       requestId,
       method: c.req.method,
-      path: redactPath(c.req.path),
+      path: route ?? 'unmatched',
       status: c.res.status,
       durationMs: Math.round(performance.now() - start),
     },

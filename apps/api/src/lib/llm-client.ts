@@ -180,17 +180,24 @@ async function callLlmWithFunction<T>(
     });
   } catch (err) {
     if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
-      throw new LlmCallError('timeout', `LLM call timed out: ${err.message}`);
+      throw new LlmCallError('timeout', 'LLM call timed out');
     }
-    const message = err instanceof Error ? err.message : String(err);
-    throw new LlmCallError('network_error', `LLM call failed: ${message}`);
+    // The transport error's own text can quote the request, so only the code travels on.
+    const code = (err as { code?: unknown } | null)?.code;
+    throw new LlmCallError(
+      'network_error',
+      typeof code === 'string' ? `LLM call failed (${code})` : 'LLM call failed'
+    );
   }
 
   if (!response.ok) {
-    const error = await response.text();
+    // The body is untrusted: it can echo the prompt or the ticket. It is read and dropped here,
+    // never put in the error, which is logged, stored in `ai_interactions` and recorded as the
+    // ticket event detail (story 7.12.2).
+    await response.body?.cancel();
     throw new LlmCallError(
       'http_error',
-      `LLM call failed: ${response.status} ${error}`,
+      `LLM call failed with HTTP ${response.status}`,
       response.status
     );
   }
@@ -210,13 +217,8 @@ async function callLlmWithFunction<T>(
   };
   try {
     data = (await response.json()) as typeof data;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new LlmCallError(
-      'invalid_response',
-      `Failed to parse LLM response as JSON: ${message}`,
-      response.status
-    );
+  } catch {
+    throw new LlmCallError('invalid_response', 'LLM response was not JSON', response.status);
   }
 
   const functionCall = data.choices[0]?.message.function_call;
@@ -227,20 +229,23 @@ async function callLlmWithFunction<T>(
   let parsed: unknown;
   try {
     parsed = JSON.parse(functionCall.arguments);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+  } catch {
     throw new LlmCallError(
       'invalid_response',
-      `Failed to parse function call arguments: ${message}`,
+      'Function call arguments were not valid JSON',
       response.status
     );
   }
 
   const result = schema.safeParse(parsed);
   if (!result.success) {
+    // Zod's message quotes the received values, which for a model can be ticket text.
+    const fields = [...new Set(result.error.issues.map((issue) => issue.path.join('.')))].join(
+      ', '
+    );
     throw new LlmCallError(
       'invalid_response',
-      `LLM output failed schema validation: ${result.error.message}`,
+      `LLM output failed schema validation (${fields})`,
       response.status
     );
   }
