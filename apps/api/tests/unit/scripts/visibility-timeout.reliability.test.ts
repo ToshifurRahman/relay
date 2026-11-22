@@ -10,7 +10,11 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { VISIBILITY_TIMEOUT_S, worstCaseProcessingMs } from '../../../scripts/setup-infra.js';
+import {
+  MAX_VISIBILITY_TIMEOUT_S,
+  visibilityTimeoutSeconds,
+  worstCaseProcessingMs,
+} from '../../../scripts/setup-infra.js';
 import { loadConfig } from '../../../src/lib/config.js';
 
 const MINIMAL: Record<string, string> = {
@@ -25,7 +29,7 @@ describe('queue visibility timeout', () => {
   it('covers the worst-case processing time of one message with margin', () => {
     const { AI_TIMEOUT_MS } = loadConfig(MINIMAL);
     const worstCaseMs = worstCaseProcessingMs(AI_TIMEOUT_MS);
-    expect(VISIBILITY_TIMEOUT_S * 1000).toBeGreaterThan(worstCaseMs);
+    expect(visibilityTimeoutSeconds(AI_TIMEOUT_MS) * 1000).toBeGreaterThan(worstCaseMs);
   });
 
   it('derives the worst case as two stages, each with a primary and a backup call', () => {
@@ -33,7 +37,7 @@ describe('queue visibility timeout', () => {
   });
 
   it('stays within the SQS maximum of twelve hours', () => {
-    expect(VISIBILITY_TIMEOUT_S).toBeGreaterThan(0);
-    expect(VISIBILITY_TIMEOUT_S).toBeLessThanOrEqual(12 * 60 * 60);
+    expect(visibilityTimeoutSeconds(30_000)).toBeGreaterThan(0);
+    expect(visibilityTimeoutSeconds(30_000)).toBeLessThanOrEqual(MAX_VISIBILITY_TIMEOUT_S);
   });
 });

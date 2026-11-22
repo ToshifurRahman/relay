@@ -83,12 +83,15 @@ describe('combined main entry point', () => {
 
     expect(await entry.terminate()).toBe(0);
     const output = entry.output();
-    // The step runs after the worker drains and before Postgres closes, so a delivery that was
-    // still in flight can finish and record its outcome. The spawned process logs through
-    // pino-pretty (NODE_ENV=test), which wraps the field name in ANSI codes, so match the value.
+    // The step runs after the worker drains, so no new delivery starts, and before Postgres
+    // closes, so one that was still in flight can finish and record its outcome. The spawned
+    // process logs through pino-pretty (NODE_ENV=test), which wraps the field name in ANSI codes,
+    // so match the value.
+    const workerDrain = output.indexOf('"worker-drain"');
     const background = output.indexOf('"background-work"');
     const postgres = output.indexOf('"postgres"');
-    expect(background).toBeGreaterThan(-1);
+    expect(workerDrain).toBeGreaterThan(-1);
+    expect(background).toBeGreaterThan(workerDrain);
     expect(postgres).toBeGreaterThan(background);
     expect(output).toContain('Shutdown complete');
   }, 60_000);

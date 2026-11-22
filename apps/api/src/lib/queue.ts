@@ -14,6 +14,8 @@ import { getConfig } from './config.js';
 // would hang the worker's poll loop and the submission path's enqueue with no error and no
 // backoff. The request budget covers a long poll (20s) plus the round trip; the connection
 // budget fails a dead host quickly so the worker's own backoff takes over.
+// `throwOnRequestTimeout` is what makes the request budget real: without it the handler only
+// logs a warning when the timeout passes and the request keeps waiting.
 export const SQS_REQUEST_TIMEOUT_MS = 25_000;
 export const SQS_CONNECTION_TIMEOUT_MS = 3_000;
 
@@ -40,6 +42,7 @@ export function buildSqsClientConfig(settings: SqsClientSettings): SQSClientConf
     requestHandler: {
       requestTimeout: SQS_REQUEST_TIMEOUT_MS,
       connectionTimeout: SQS_CONNECTION_TIMEOUT_MS,
+      throwOnRequestTimeout: true,
     },
   };
 }
