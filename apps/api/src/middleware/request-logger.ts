@@ -14,7 +14,8 @@ const HEALTH_PATH = /^\/health(\/|$)/;
 //
 // The line records the matched route pattern, not the concrete URL: the confirmation token is a
 // bearer credential and the ticket reference is all anyone needs to open a ticket, so neither
-// may reach the log (story 7.12.2). A path with no matched route (a 404) is logged as `unmatched`.
+// may reach the log (stories 7.12.1 and 7.12.2). A path with no matched route (a 404, or a page
+// the SPA fallback serves) is logged as `unmatched`.
 export const requestLogger = createMiddleware<AppEnv>(async (c, next) => {
   const requestId = c.req.header('x-request-id') ?? crypto.randomUUID();
   c.set('requestId', requestId);

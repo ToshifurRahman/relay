@@ -58,7 +58,8 @@ browser storage. `ops:subscribe` reads the same cookie from the socket handshake
 is signed out or expires.
 
 `OPS_TOKEN` is required in production and must be at least 32 characters (`openssl rand -base64 32`). The
-brute-force counter uses the last `X-Forwarded-For` hop, which is the address the hosting proxy saw.
+brute-force counter uses `CF-Connecting-IP`, the address Cloudflare sets at its edge, and falls back to the last
+`X-Forwarded-For` hop when that header is absent.
 
 ## Ops Email Alerts
 

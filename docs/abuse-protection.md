@@ -12,6 +12,8 @@ cannot spend the AI quota and an ordinary visitor sees no change.
 2. **Per-IP limit** — `tickets:ip:<ip>:<YYYY-MM-DDTHH>` in Redis, a one-hour fixed window.
    More than `TICKET_IP_HOURLY_LIMIT` hits is a 429 with `Retry-After: 3600`. The UTC hour is in
    the key so a key that somehow lost its TTL can block an address for one hour, never forever.
+   `<ip>` is `clientIp()`: `CF-Connecting-IP` when Cloudflare sets it, otherwise the last
+   `X-Forwarded-For` hop.
 3. **Turnstile** — `apps/api/src/lib/turnstile.ts` posts `secret`, `response` and (unless the
    address is `local`) `remoteip` to Cloudflare's `siteverify` endpoint with a 5 s timeout.
    Only `missing-input-response`, `invalid-input-response` and `timeout-or-duplicate` count as a

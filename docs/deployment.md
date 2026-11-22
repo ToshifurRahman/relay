@@ -158,11 +158,15 @@ check on that commit has passed.
 
 ## Checking the client address (PA-7.5-04)
 
-The per-address rate limit is keyed by `clientIp()` in `apps/api/src/middleware/client-ip.ts`,
-which returns the **last** hop of `X-Forwarded-For` (the one Render's proxy appends) and the
-string `local` when the header is absent. Behind Render's proxy that is the caller's address. If
-the header ever went missing, every caller would share the key `tickets:ip:local:<UTC hour>` in
-Redis: one abuser would then spend the shared hourly budget and rate-limit everyone else with a 429.
+The per-address rate limit is keyed by `clientIp()` in `apps/api/src/middleware/client-ip.ts`.
+The service sits behind Cloudflare in front of Render's proxy, so the header that carries the
+caller is `CF-Connecting-IP`, which Cloudflare sets and overwrites at its edge; `clientIp()`
+returns it when it holds an address. Otherwise it falls back to the **last** hop of
+`X-Forwarded-For` (the one Render's proxy appends), and to the string `local` when neither header
+is present. The last `X-Forwarded-For` hop is a Cloudflare edge address shared by every caller
+behind that PoP, which is why it is only the fallback. If both headers ever went missing, every
+caller would share the key `tickets:ip:local:<UTC hour>` in Redis: one abuser would then spend the
+shared hourly budget and rate-limit everyone else with a 429.
 
 Check it on the deployed service:
 
@@ -188,7 +192,8 @@ Check it on the deployed service:
    header: stop and fix it before inviting traffic.
 
 Do not trust a client-supplied header as the check: earlier hops in `X-Forwarded-For` are written
-by the caller. The key that matters is the last hop Render adds.
+by the caller. The key that matters is `CF-Connecting-IP`, which Cloudflare owns, and the last hop
+Render adds when that header is absent.
 
 ## Rollback
 
