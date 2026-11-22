@@ -67,6 +67,18 @@ describe('purgeExpiredTickets', () => {
     expect(await count('ai_interactions', freshId)).toBe(1);
   });
 
+  it('deletes the email opt-in with its ticket, as /privacy promises', async () => {
+    const id = await ticketAged('TICK-RET-EMAIL', RETENTION_DAYS + 1);
+    await pool.query('INSERT INTO ticket_notifications (ticket_id, email) VALUES ($1, $2)', [
+      id,
+      'customer@example.test',
+    ]);
+
+    await purgeExpiredTickets();
+
+    expect(await count('ticket_notifications', id)).toBe(0);
+  });
+
   it('leaves the append-only protection on afterwards', async () => {
     const id = await ticketAged('TICK-RET-GUARD', 1);
     await purgeExpiredTickets();

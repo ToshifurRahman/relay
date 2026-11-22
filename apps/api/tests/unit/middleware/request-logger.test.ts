@@ -9,7 +9,12 @@ import { type AppEnv, requestLogger } from '../../../src/middleware/request-logg
 
 const app = new Hono<AppEnv>();
 app.use('*', requestLogger);
-app.all('*', (c) => c.text('ok'));
+app.get('/health', (c) => c.text('ok'));
+app.get('/health/live', (c) => c.text('ok'));
+app.get('/health/ready', (c) => c.text('ok'));
+app.get('/healthy', (c) => c.text('ok'));
+app.get('/health-check', (c) => c.text('ok'));
+app.get('/api/x', (c) => c.text('ok'));
 
 beforeEach(() => {
   debug.mockReset();

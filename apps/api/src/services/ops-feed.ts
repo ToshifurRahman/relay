@@ -62,7 +62,7 @@ function publish(
   try {
     getEmitter().to(OPS_ROOM).emit(name, payload);
   } catch (err) {
-    logger.error({ err, ticketId: payload.ticketId }, `Failed to emit ${name}`);
+    logger.error({ err, ticketId: payload.ticketId, event: name }, 'Failed to emit ops event');
   }
 }
 
