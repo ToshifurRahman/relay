@@ -22,13 +22,14 @@ export const requestLogger = createMiddleware<AppEnv>(async (c, next) => {
   const start = performance.now();
   await next();
   const level = HEALTH_PATH.test(c.req.path) ? 'debug' : 'info';
-  const matched = c.req.matchedRoutes.at(-1)?.path;
-  const route = matched && matched !== '/*' ? matched : 'unmatched';
+  // `mountWebApp` registers `app.use('*', staticFiles)` after every route, so the final match in
+  // the deployed image is always the wildcard. Take the last match that is not a wildcard.
+  const route = [...c.req.matchedRoutes].reverse().find((r) => !r.path.endsWith('*'))?.path;
   logger[level](
     {
       requestId,
       method: c.req.method,
-      path: route,
+      path: route ?? 'unmatched',
       status: c.res.status,
       durationMs: Math.round(performance.now() - start),
     },
