@@ -12,7 +12,7 @@ import { removeTicket } from './helpers/cleanup-ticket';
 import { E2E_OPS_TOKEN } from './helpers/ops-session';
 import { TURNSTILE_DUMMY_TOKEN } from './helpers/turnstile';
 
-// The thread test's ticket settles in needs_attention, so it would otherwise stay in the ops
+// The ticket this spec creates settles in needs_attention, so it would otherwise stay in the ops
 // console's queue for every later run.
 const created: string[] = [];
 

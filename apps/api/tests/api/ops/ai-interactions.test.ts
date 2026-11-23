@@ -74,21 +74,35 @@ describe('GET /api/ops/ai-interactions', () => {
 });
 
 describe('GET /api/ops/ai-interactions/summary', () => {
-  // The summary aggregates the whole table over a time window, so an absolute count is only
-  // stable on an empty database. A row left by an earlier run (a crashed suite, a manual probe)
-  // inside the window would break it. The test therefore measures the delta its own insert makes.
-  async function primaryTriageCount(): Promise<{ count: number; successCount: number }> {
+  // The summary aggregates the whole table over a time window, so any absolute value is only
+  // stable on an empty database: a row left by an earlier run (a crashed suite, a manual probe)
+  // inside the window changes the counts, and a stray failure row changes the ratio. The test
+  // therefore measures the deltas its own insert makes, and checks the ratio against the totals
+  // the same response reports rather than against a hardcoded 1.
+  interface TriageTotals {
+    count: number;
+    successCount: number;
+    successRate: number;
+  }
+
+  async function primaryTriageTotals(): Promise<TriageTotals | undefined> {
     const res = await request(app).get<AiSummaryBody>('/api/ops/ai-interactions/summary');
     expect(res.status).toBe(200);
     const row = res.body.summary.find(
       (s: { provider: string; operation: string }) =>
         s.provider === 'primary' && s.operation === 'triage'
     );
-    return { count: row?.count ?? 0, successCount: row?.successCount ?? 0 };
+    return (
+      row && {
+        count: row.count,
+        successCount: row.successCount,
+        successRate: row.successRate,
+      }
+    );
   }
 
   it('returns a summary shape with the default 24h window', async () => {
-    const before = await primaryTriageCount();
+    const before = (await primaryTriageTotals()) ?? { count: 0, successCount: 0, successRate: 0 };
 
     const ticket = await insertTicket('TICK-OPS-002', 'Sub', 'Desc');
     createdIds.push(ticket.id);
@@ -102,16 +116,15 @@ describe('GET /api/ops/ai-interactions/summary', () => {
     // This test's own ticket was created inside the window.
     expect(res.body.ticketsInWindow).toBeGreaterThanOrEqual(1);
     expect(Array.isArray(res.body.summary)).toBe(true);
-    const primaryTriage = res.body.summary.find(
-      (s: { provider: string; operation: string }) =>
-        s.provider === 'primary' && s.operation === 'triage'
-    );
-    // Exactly one more than before: the row this test inserted, and nothing else.
-    expect(primaryTriage).toMatchObject({
-      count: before.count + 1,
-      successCount: before.successCount + 1,
-      successRate: 1,
-    });
+
+    const after = (await primaryTriageTotals())!;
+    // Exactly one more call and one more success than before: this test's own insert, and
+    // nothing else. Any stray row in the window (success or failure) only shifts both baselines.
+    expect(after.count).toBe(before.count + 1);
+    expect(after.successCount).toBe(before.successCount + 1);
+    // The ratio is the response's own successes over its own calls, so a stray failure row
+    // changes both sides together instead of breaking the assertion.
+    expect(after.successRate).toBeCloseTo(after.successCount / after.count, 10);
   });
 
   it('returns 400 for a malformed since date', async () => {
