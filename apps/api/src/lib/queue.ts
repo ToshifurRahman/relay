@@ -5,9 +5,47 @@ import {
   ReceiveMessageCommand,
   SendMessageCommand,
   SQSClient,
+  type SQSClientConfig,
 } from '@aws-sdk/client-sqs';
 
 import { getConfig } from './config.js';
+
+// The SDK's own defaults disable both timeouts (0 = wait forever), so a black-holed endpoint
+// would hang the worker's poll loop and the submission path's enqueue with no error and no
+// backoff. The request budget covers a long poll (20s) plus the round trip; the connection
+// budget fails a dead host quickly so the worker's own backoff takes over.
+// `throwOnRequestTimeout` is what makes the request budget real: without it the handler only
+// logs a warning when the timeout passes and the request keeps waiting.
+export const SQS_REQUEST_TIMEOUT_MS = 25_000;
+export const SQS_CONNECTION_TIMEOUT_MS = 3_000;
+
+export interface SqsClientSettings {
+  SQS_ENDPOINT?: string;
+  AWS_REGION: string;
+  AWS_ACCESS_KEY_ID: string;
+  AWS_SECRET_ACCESS_KEY: string;
+}
+
+/**
+ * The one place an SQS client's settings are built, so the worker, the API and the setup script
+ * cannot drift apart on timeouts. No `endpoint` property at all for real AWS, which makes the
+ * SDK use the regional endpoint.
+ */
+export function buildSqsClientConfig(settings: SqsClientSettings): SQSClientConfig {
+  return {
+    ...(settings.SQS_ENDPOINT ? { endpoint: settings.SQS_ENDPOINT } : {}),
+    region: settings.AWS_REGION,
+    credentials: {
+      accessKeyId: settings.AWS_ACCESS_KEY_ID,
+      secretAccessKey: settings.AWS_SECRET_ACCESS_KEY,
+    },
+    requestHandler: {
+      requestTimeout: SQS_REQUEST_TIMEOUT_MS,
+      connectionTimeout: SQS_CONNECTION_TIMEOUT_MS,
+      throwOnRequestTimeout: true,
+    },
+  };
+}
 
 export interface QueueMessage {
   ticketId: string;
@@ -119,14 +157,14 @@ function service(): QueueService {
   if (!queueService) {
     const config = getConfig();
     queueService = new QueueService(
-      new SQSClient({
-        endpoint: config.SQS_ENDPOINT,
-        region: config.AWS_REGION,
-        credentials: {
-          accessKeyId: config.AWS_ACCESS_KEY_ID,
-          secretAccessKey: config.AWS_SECRET_ACCESS_KEY,
-        },
-      }),
+      new SQSClient(
+        buildSqsClientConfig({
+          SQS_ENDPOINT: config.SQS_ENDPOINT,
+          AWS_REGION: config.AWS_REGION,
+          AWS_ACCESS_KEY_ID: config.AWS_ACCESS_KEY_ID,
+          AWS_SECRET_ACCESS_KEY: config.AWS_SECRET_ACCESS_KEY,
+        })
+      ),
       config.SQS_QUEUE_NAME
     );
   }
