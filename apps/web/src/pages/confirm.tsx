@@ -8,6 +8,7 @@ import { Stamp } from '@/components/form/stamp';
 import { Button } from '@/components/ui/button';
 import { brand } from '@/config/brand';
 import { confirmNotification, previewConfirmation } from '@/features/tickets';
+import { ApiError } from '@/lib/api';
 
 // The link in the email lands here, and only the button changes anything: mail scanners open
 // links on their own, and a GET that confirmed would let them confirm for the customer.
@@ -38,6 +39,29 @@ export function ConfirmPage() {
     );
   }
 
+  // A cold start, a 502/503 or a dropped connection is not the same as a dead token. Saying
+  // "expired" here would tell a customer their live link is spent when the API was merely asleep,
+  // so the two are kept apart: only a refusal of the token itself claims expiry.
+  if (preview.isError) {
+    return (
+      <Panel title="We couldn't check this link" referenceNumber="-">
+        <p>
+          We couldn't reach the server just now. Your link may still be good — try again in a
+          moment.
+        </p>
+        <div>
+          <Button
+            variant="solid"
+            onClick={() => void preview.refetch()}
+            disabled={preview.isFetching}
+          >
+            {preview.isFetching ? 'Trying...' : 'Try again'}
+          </Button>
+        </div>
+      </Panel>
+    );
+  }
+
   if (confirm.isSuccess) {
     const { referenceNumber, status, maskedEmail } = confirm.data;
     return (
@@ -60,6 +84,21 @@ export function ConfirmPage() {
             <Link to={`/t/${referenceNumber}`} className="no-underline">
               View my ticket
             </Link>
+          </Button>
+        </div>
+      </Panel>
+    );
+  }
+
+  // Same distinction for the click: the server answers a spent token with 410. Anything else —
+  // an outage mid-confirm — must offer another go rather than declare the link dead.
+  if (confirm.isError && !(confirm.error instanceof ApiError && confirm.error.status === 410)) {
+    return (
+      <Panel title="We couldn't confirm just now" referenceNumber="-">
+        <p>Nothing was changed. Check your connection and try again.</p>
+        <div>
+          <Button variant="solid" onClick={() => confirm.mutate()} disabled={confirm.isPending}>
+            {confirm.isPending ? 'Confirming...' : 'Try again'}
           </Button>
         </div>
       </Panel>

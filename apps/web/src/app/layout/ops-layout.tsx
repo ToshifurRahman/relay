@@ -1,7 +1,8 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 
 import { SkipLink } from '@/app/layout/skip-link';
 import { Wordmark } from '@/components/brand-mark';
+import { ErrorBoundary } from '@/components/error-boundary';
 import { Stamp } from '@/components/form/stamp';
 import { Toaster } from '@/components/ui/sonner';
 import { OpsHeaderActions } from '@/features/ops';
@@ -9,6 +10,7 @@ import { OpsHeaderActions } from '@/features/ops';
 // No track field and no footer: this is a working surface. The feed indicator and Sign out
 // appear once someone is signed in.
 export function OpsLayout() {
+  const { pathname } = useLocation();
   return (
     <div className="flex min-h-screen flex-col">
       <SkipLink />
@@ -28,7 +30,9 @@ export function OpsLayout() {
         tabIndex={-1}
         className="mx-auto w-full max-w-(--page-width) flex-1 px-4 pt-8 pb-18 outline-none"
       >
-        <Outlet />
+        <ErrorBoundary key={pathname}>
+          <Outlet />
+        </ErrorBoundary>
       </main>
       <Toaster />
     </div>
