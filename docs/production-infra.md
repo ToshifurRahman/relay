@@ -43,15 +43,21 @@ To check TLS is on:
 
 ### Command budget (PA-7.8-04)
 
-Measured on the local stack inside one `run-check.sh` call, with the API and one worker up,
-`LLM_MODE=fake`, and one ticket processed end to end (inserted queued, enqueued, then polled to
-`completed`). `INFO commandstats` was read before, after the ticket, and after 5 idle minutes:
+Production uses Redis Cloud, whose Free plan is 30 MB and 30 connections, so the Upstash daily
+command quota does not apply; connections and memory are the limits that matter. Measured on the
+local stack inside one `run-check.sh` call, with the API, the worker and every Redis client up,
+`LLM_MODE=fake`, one full journey: `POST /api/tickets` (counters, Turnstile, enqueue), worker
+triage and draft, Socket.IO events, the notification opt-in and confirm, and ops sign-in.
 
-- **Per ticket: 10 commands**, all `PUBLISH` (Socket.IO events). The ticket was enqueued directly,
-  so the API submission path's `INCR`/`EXPIRE` counters are not part of this figure; a real
-  submission adds a handful more.
-- **Per idle hour: 0 commands** over the 5-minute sample, because every Redis client connects
-  lazily and socket clients do not poll while idle.
+- **Per journey: 23 application commands** — 16 `PUBLISH` (one per emitted event: submit 1, worker
+  10, opt-in 2, confirm 3), 5 `INCR` (per-IP, day, opt-in, two mail sends), 1 `SET` (ops session)
+  and 1 `GET` (sign-in lockout). A first-of-day journey adds up to four `EXPIRE`s (27 total).
+- **Per idle minute: 0 application commands** over a 5-minute sample, because every Redis client
+  connects lazily and socket clients do not poll while idle.
+- **Connections: 5** in the one-process production entry point (counters, ops sessions, Socket.IO
+  pub, Socket.IO sub, emitter), about 7 if the API and worker run separately. Well inside 30.
+- At the 100-ticket/day cap this is about 2,300-2,700 commands and well under 30 MB of TTL'd keys
+  per day.
 
 Other clients on the same host Redis can inflate these counts. Re-measure on the production
 instance before sizing the plan.
@@ -108,6 +114,15 @@ app skips ops alerts and everything else still works.
   Budgets is free for the first two budgets.
 - Add a calendar reminder **before 2027-04-03**, when the AWS free-usage period used by this
   project ends, to review spend and decide on ElasticMQ (below).
+- The free-tier ceilings this budget is meant to catch: SQS 1,000,000 requests/month, SNS 1,000
+  email deliveries/month, Neon 100 CU-hours/project/month and Brevo 300 emails/day. At the
+  default caps the only projected overage is SNS (~$0.28/month at the 20/hour ceiling), still
+  below $1. The full maths is in `docs/audit/launch/04-cost-limits.md`.
+- **Do not keep the Render service awake on Neon's Free plan.** Render's `/health/ready` checks
+  query Postgres every few seconds, so a kept-awake service runs the 0.25 CU compute continuously:
+  0.25 × 744 = 186 CU-hours against the 100 CU-hour monthly allowance, and Neon suspends the
+  project around day 16. If uptime monitoring is required, point both the ping and Render's health
+  check at `/health/live`, which touches no database, or upgrade Neon.
 
 ## 7. Switch to ElasticMQ (hosting is an open decision)
 

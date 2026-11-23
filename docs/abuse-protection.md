@@ -76,6 +76,13 @@ triage attempt and throw on the event write; receive 6 runs triage and, when it 
 That is 7 stage attempts × 2 provider calls = **14 LLM calls** for one ticket, and 1400 for a day
 at the default cap. 12 is the normal ceiling; 14 is the ceiling when failure recording breaks.
 
+Ops replay is the one path that is not counted: `POST /api/tickets/:id/replay` re-enqueues a
+failed ticket without touching `tickets:day`, and `docs/ops.md` has no replay limit. Each replay
+is a fresh set of stage attempts (up to 6 calls for a draft-only replay, 12 from triage), so it is
+an operator-controlled exception to the daily call bound, not a public one. `MAIL_DAILY_CAP`
+(250/day, shared by the confirmation, reply-ready and snag emails) is fail-closed: when the
+counter cannot answer, no email is sent.
+
 ## Tests
 
 - `apps/api/tests/unit/lib/turnstile.test.ts` — the verifier's outcomes, form fields and timeout.
