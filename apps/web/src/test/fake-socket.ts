@@ -40,5 +40,3 @@ export function createFakeSocket() {
   };
   return socket;
 }
-
-export type FakeSocket = ReturnType<typeof createFakeSocket>;
