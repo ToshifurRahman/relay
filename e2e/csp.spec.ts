@@ -8,8 +8,17 @@
  */
 import { expect, type Page, test } from '@playwright/test';
 
+import { removeTicket } from './helpers/cleanup-ticket';
 import { E2E_OPS_TOKEN } from './helpers/ops-session';
 import { TURNSTILE_DUMMY_TOKEN } from './helpers/turnstile';
+
+// The thread test's ticket settles in needs_attention, so it would otherwise stay in the ops
+// console's queue for every later run.
+const created: string[] = [];
+
+test.afterAll(async () => {
+  for (const id of created) await removeTicket(id);
+});
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -79,15 +88,23 @@ test('no CSP violation on the landing page, a signed-in /ops and a real ticket t
   await expect(page.getByRole('tab', { name: /^All/ })).toBeVisible();
   await expectNoViolations(page, 'ops');
 
-  const created = await request.post('/api/tickets', {
+  const response = await request.post('/api/tickets', {
     data: {
       subject: 'CSP spec ticket',
-      description: 'This ticket gives the CSP spec a real thread page with a live socket.',
+      // Triage fails on the marker, so the ticket settles in needs_attention. That state keeps
+      // the page listening (a replay can revive it), so the socket stays open and the liveness
+      // check below cannot race the worker finishing the ticket.
+      description:
+        'This ticket gives the CSP spec a real thread page with a live socket. [fake:invalid-triage]',
       turnstileToken: TURNSTILE_DUMMY_TOKEN,
     },
   });
-  expect(created.status()).toBe(201);
-  const { referenceNumber } = (await created.json()) as { referenceNumber: string };
+  expect(response.status()).toBe(201);
+  const { ticketId, referenceNumber } = (await response.json()) as {
+    ticketId: string;
+    referenceNumber: string;
+  };
+  created.push(ticketId);
   const socketConnected = page.waitForEvent('websocket', {
     predicate: (ws) => ws.url().includes('/socket.io/'),
     timeout: 20_000,
@@ -95,6 +112,9 @@ test('no CSP violation on the landing page, a signed-in /ops and a real ticket t
   await page.goto(`/t/${referenceNumber}`);
   await expect(page.getByRole('heading', { name: 'CSP spec ticket' })).toBeVisible();
   const socket = await socketConnected;
+  // Wait for the settled state first: the socket is open for as long as the page listens, and
+  // needs_attention never stops it, so this is a condition, not a timing guess.
+  await expect(page.getByText(/flagged for the team/)).toBeVisible({ timeout: 15_000 });
   expect(socket.isClosed()).toBe(false);
   await expectNoViolations(page, 'thread');
 });

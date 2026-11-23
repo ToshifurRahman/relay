@@ -74,7 +74,22 @@ describe('GET /api/ops/ai-interactions', () => {
 });
 
 describe('GET /api/ops/ai-interactions/summary', () => {
+  // The summary aggregates the whole table over a time window, so an absolute count is only
+  // stable on an empty database. A row left by an earlier run (a crashed suite, a manual probe)
+  // inside the window would break it. The test therefore measures the delta its own insert makes.
+  async function primaryTriageCount(): Promise<{ count: number; successCount: number }> {
+    const res = await request(app).get<AiSummaryBody>('/api/ops/ai-interactions/summary');
+    expect(res.status).toBe(200);
+    const row = res.body.summary.find(
+      (s: { provider: string; operation: string }) =>
+        s.provider === 'primary' && s.operation === 'triage'
+    );
+    return { count: row?.count ?? 0, successCount: row?.successCount ?? 0 };
+  }
+
   it('returns a summary shape with the default 24h window', async () => {
+    const before = await primaryTriageCount();
+
     const ticket = await insertTicket('TICK-OPS-002', 'Sub', 'Desc');
     createdIds.push(ticket.id);
     await insertAiInteraction(record({ ticketId: ticket.id }));
@@ -91,7 +106,12 @@ describe('GET /api/ops/ai-interactions/summary', () => {
       (s: { provider: string; operation: string }) =>
         s.provider === 'primary' && s.operation === 'triage'
     );
-    expect(primaryTriage).toMatchObject({ count: 1, successCount: 1, successRate: 1 });
+    // Exactly one more than before: the row this test inserted, and nothing else.
+    expect(primaryTriage).toMatchObject({
+      count: before.count + 1,
+      successCount: before.successCount + 1,
+      successRate: 1,
+    });
   });
 
   it('returns 400 for a malformed since date', async () => {

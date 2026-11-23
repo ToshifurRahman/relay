@@ -53,6 +53,19 @@ async function expectReply(page: Page) {
 }
 
 test('a submitted ticket gets its reply live on the thread page', async ({ page }) => {
+  // The working state is transient: the fake LLM answers in about 800ms, so on a slow CI
+  // browser the page can finish loading after the ticket already completed and the status
+  // element is gone. The component and page tests pin that state deterministically; here the
+  // claim is the end-to-end outcome, so the reply is awaited and a reload is ruled out.
+  //
+  // Every document load bumps a counter. The submit page is load 1 and the thread is a
+  // same-document route change, so a reply that arrives with the counter still at 1 came over
+  // the open page's socket, not from a fresh load.
+  await page.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__documentLoads = ((w.__documentLoads as number) ?? 0) + 1;
+  });
+
   await submitAndWatch(
     page,
     'Report export never starts',
@@ -63,10 +76,12 @@ test('a submitted ticket gets its reply live on the thread page', async ({ page 
   await expect(
     page.getByText('The CSV export button spins and then nothing downloads.')
   ).toBeVisible();
-  await expect(page.getByRole('status')).toHaveText(/Reading your request...|Writing a reply.../);
 
   await expectReply(page);
   await expect(page.getByRole('status')).toHaveCount(0);
+  expect(
+    await page.evaluate(() => (window as unknown as Record<string, unknown>).__documentLoads)
+  ).toBe(1);
 });
 
 test('a ticket that needs a closer look picks up live after the team replays it', async ({
