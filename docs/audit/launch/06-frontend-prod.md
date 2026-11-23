@@ -175,9 +175,12 @@ change, and the production build above was rerun afterwards:
 | `bun run typecheck`              | clean                                      | 0    |
 | `@relay/api` unit                | 524 passed / 0 failed, 59 files, 0 skipped | 0    |
 | `@relay/api` integration         | 369 passed / 0 failed, 35 files, 0 skipped | 0    |
-| `@relay/web` test                | 314 passed / 0 failed, 35 files, 0 skipped | 0    |
+| `@relay/web` test                | 316 passed / 0 failed, 35 files, 0 skipped | 0    |
 
-Counts match the Wave 3 baseline (~524/369/300) plus the 14 frontend tests added here (300 → 314).
+Counts match the Wave 3 baseline (~524/369/300) plus the 16 frontend tests added here (300 → 316).
+The same six gates pass under a clean `env -i` shell with only the explicit test variables set
+(`reports/logs/fe-fix1-clean-web.log`: `@relay/web` 316 passed, 0 skipped), so no hidden shell
+exports are required.
 
 ## Parked items from the pre-audit
 
