@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { FormHeader } from '@/components/form/form-header';
@@ -30,6 +30,14 @@ export function ConfirmPage() {
     retry: false,
   });
   const confirm = useMutation({ mutationFn: () => confirmNotification(token) });
+  // A failed click must keep its retry panel on screen while the retry runs: `isError` turns false
+  // the moment `mutate()` is called again, so the mutation's own state would drop the panel and
+  // bounce the page back to the Confirm button. Only a 410 (spent token) clears it.
+  const [clickFailed, setClickFailed] = useState(false);
+  const clickConfirm = () =>
+    confirm.mutate(undefined, {
+      onError: (error) => setClickFailed(!(error instanceof ApiError && error.status === 410)),
+    });
 
   if (preview.isPending) {
     return (
@@ -91,13 +99,14 @@ export function ConfirmPage() {
   }
 
   // Same distinction for the click: the server answers a spent token with 410. Anything else —
-  // an outage mid-confirm — must offer another go rather than declare the link dead.
-  if (confirm.isError && !(confirm.error instanceof ApiError && confirm.error.status === 410)) {
+  // an outage mid-confirm — must offer another go rather than declare the link dead. The panel
+  // stays mounted across the retry so the failure does not flash back to the Confirm button.
+  if (clickFailed) {
     return (
       <Panel title="We couldn't confirm just now" referenceNumber="-">
         <p>Nothing was changed. Check your connection and try again.</p>
         <div>
-          <Button variant="solid" onClick={() => confirm.mutate()} disabled={confirm.isPending}>
+          <Button variant="solid" onClick={clickConfirm} disabled={confirm.isPending}>
             {confirm.isPending ? 'Confirming...' : 'Try again'}
           </Button>
         </div>
@@ -130,7 +139,7 @@ export function ConfirmPage() {
         <strong>{preview.data.maskedEmail}</strong>?
       </p>
       <div>
-        <Button variant="solid" onClick={() => confirm.mutate()} disabled={confirm.isPending}>
+        <Button variant="solid" onClick={clickConfirm} disabled={confirm.isPending}>
           {confirm.isPending ? 'Confirming...' : 'Confirm'}
         </Button>
       </div>

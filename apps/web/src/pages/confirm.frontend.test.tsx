@@ -83,3 +83,63 @@ describe('confirm page — cold or down API', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('confirm page — the confirm click (POST)', () => {
+  const validPreview = () =>
+    HttpResponse.json({
+      valid: true,
+      referenceNumber: TICKET_REF,
+      maskedEmail: 't•••@example.test',
+    });
+
+  it('offers a retry for an outage on the click and recovers', async () => {
+    const user = userEvent.setup();
+    let posts = 0;
+    server.use(
+      http.get('/api/notifications/confirm/abc', validPreview),
+      http.post('/api/notifications/confirm', () => {
+        posts++;
+        if (posts === 1) return new HttpResponse(null, { status: 502 });
+        return HttpResponse.json({
+          referenceNumber: TICKET_REF,
+          status: 'processing',
+          maskedEmail: 't•••@example.test',
+        });
+      })
+    );
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Confirm' }));
+
+    // A 502 mid-click is not a spent token: the page must not say the link is dead.
+    expect(
+      await screen.findByRole('heading', { name: /couldn't confirm just now/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: /expired or was already used/i })
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /try again/i }));
+
+    expect(await screen.findByRole('heading', { name: "You're all set" })).toBeInTheDocument();
+    expect(posts).toBe(2);
+  });
+
+  it('claims the link is expired only when the click answers 410', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get('/api/notifications/confirm/abc', validPreview),
+      http.post('/api/notifications/confirm', () => new HttpResponse(null, { status: 410 }))
+    );
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Confirm' }));
+
+    expect(
+      await screen.findByRole('heading', { name: /expired or was already used/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: /couldn't confirm just now/i })
+    ).not.toBeInTheDocument();
+  });
+});
