@@ -102,12 +102,21 @@ Response headers on `/` (relevant to frontend production readiness): a full CSP 
 These come from the API's security-headers middleware and are outside 7.12.6's owned files; they
 are recorded here as passing evidence, not changed.
 
-Lighthouse (mobile preset, single run per page, local Chrome, no `@latest` runner) against the live
-homepage: **performance 100 · accessibility 100 · best-practices 100 · SEO 100**. The only
-non-passing a11y detail was `label-content-name-mismatch` (weight 0, "hidden"), which pointed at the
-header home link — that is FE-03 below; it is a real WCAG 2.5.3 defect even though the aggregate
-score rounded to 100. `.lighthouseci/` is not used (results were written to a scratch dir outside
-the repo) and is absent at the gate run.
+Lighthouse 13.6.0 (mobile preset, one run per page, local Google Chrome 157 via the installed
+`lighthouse` binary, no `@latest` runner) against four live routes:
+
+| Page             | Performance | Accessibility | Best practices | SEO |
+| ---------------- | ----------- | ------------- | -------------- | --- |
+| `/`              | 100         | 100           | 100            | 100 |
+| `/new`           | 100         | 100           | 100            | 100 |
+| `/legal/privacy` | 100         | 100           | 100            | 100 |
+| `/legal/terms`   | 100         | 100           | 100            | 100 |
+
+The only non-passing a11y detail on every page was `label-content-name-mismatch` (weight 0,
+"hidden"), which pointed at the same header home link — that is FE-03 below. It is a real WCAG
+2.5.3 defect even though the aggregate score rounded to 100; it is fixed on this branch and the
+live deploy still carries the old bundle until the next release. Results were written to a scratch
+dir outside the repo; `.lighthouseci/` is not used and is absent at the gate run.
 
 ## Findings
 
