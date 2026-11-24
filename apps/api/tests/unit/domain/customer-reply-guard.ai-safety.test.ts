@@ -26,6 +26,16 @@ describe('customer reply guard', () => {
     ['a provider mention', 'If the problem persists, contact your provider: Acme.'],
     ['a plain URL', 'Reset your password at https://support.example/reset and sign in.'],
     ['a shift expression', 'Check that the flag uses a << b semantics.'],
+    // Review round 2 (DS P1-1): forwarding a refund *request* is not a refund. Only the action
+    // itself is unauthorised, so the request noun must not trip the promise rule.
+    [
+      'a forwarded refund request',
+      'I will send your refund request to the billing team for review.',
+    ],
+    ['a refund request in process', 'We will process your refund request with our billing team.'],
+    ['a prepared refund request', 'I will prepare your refund request for billing.'],
+    // A retention statement about the ticket's own lifecycle is policy copy, not a promise.
+    ['a retention statement', 'Your ticket and its replies will be deleted after 30 days.'],
   ])('accepts ordinary prose: %s', (_label, reply) => {
     expect(checkCustomerReply(reply)).toEqual({ safe: true });
   });
@@ -47,6 +57,10 @@ describe('customer reply guard', () => {
     ['an unlock claim', 'We have unlocked your account, you can sign in now.'],
     ['a cancellation claim', 'We cancelled your subscription as requested.'],
     ['a deletion claim', 'We\u2019ve deleted your data and it is gone for good.'],
+    // Review round 2 (DS P1-1): first-person and passive forms of the same completed action.
+    ['a past refund of an order', 'We have refunded your order.'],
+    ['a first-person deletion', 'I have deleted your account.'],
+    ['a passive unlock', 'Your account has been unlocked.'],
   ])('rejects %s, which promises an action the app never took', (_label, reply) => {
     expect(checkCustomerReply(reply)).toMatchObject({
       safe: false,
@@ -110,6 +124,14 @@ describe('customer reply guard', () => {
     ['a reasoning key', '{"reasoning": "the customer is a churn risk"}'],
     ['a confidence key', '{"confidence": 0.92}'],
     ['provider metadata keys', '{"provider": "groq", "model": "openai/gpt-oss-20b"}'],
+    // Review round 2 (DS P1-2): the prose label form is the AI-02 leak shape and must still be
+    // caught; `contact your provider: Acme` above stays safe because Acme is not a gateway name.
+    [
+      'a prose label dump',
+      'reasoning: the customer is a churn risk. provider: groq, model: openai/gpt-oss-20b',
+    ],
+    ['a prose reasoning label', 'reasoning: the customer is a churn risk'],
+    ['a prose model id', 'model: gpt-4o-mini'],
   ])('rejects %s', (_label, reply) => {
     expect(checkCustomerReply(reply)).toMatchObject({ safe: false, reason: 'internal_fields' });
   });

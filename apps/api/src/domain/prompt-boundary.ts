@@ -63,18 +63,15 @@ export function neutralizeUntrustedText(value: string): string {
       // cannot be re-read as a delimiter or role marker (defense in depth).
       .replace(/\uFF1C/g, '\u2039')
       .replace(/\uFF1E/g, '\u203a')
-      // Our own delimiter tags and the role names a model could treat as a boundary. Only these
-      // names are removed: a generic `<...>` strip would eat a ticket's code, turning
-      // `if (a<b && c>d)` into `if (ad)` and deleting `Array<T>`.
+      // Our own delimiter tags and the triage wrapper. Only these names are boundary-shaped, so
+      // only these are removed: `<System>`, `<User>`, `Vec<User>` and a React `<Form>` are the
+      // ticket's own code and stay intact.
       .replace(
-        /<\/?(?:ticket[_-]?(?:data|body|subject|description)|system|assistant|user|im_start|im_end|endoftext)\b[^<>]*>/gi,
+        /<\/?(?:ticket[_-]?(?:data|body|subject|description)|triage[_-]?context)\b[^<>]*>/gi,
         ''
       )
-      // HTML tags that carry an executable payload.
-      .replace(
-        /<\/?(?:script|iframe|object|embed|style|svg|form|input|link|meta|img)\b[^<>]*>/gi,
-        ''
-      )
+      // Executable HTML tags only. A generic tag strip would delete a ticket's code.
+      .replace(/<\/?(?:script|iframe|object|embed)\b[^<>]*>/gi, '')
       // Chat-template role markers: `<|system|>`, `<|im_start|>`, `<|endoftext|>`.
       .replace(/<\|[^|<>]*\|>/g, '')
       // Llama/Mistral instruction tokens and system wrappers.

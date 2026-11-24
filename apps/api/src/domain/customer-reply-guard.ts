@@ -51,27 +51,47 @@ const INTERNAL_FIELDS = [
   /\bnextSteps\b/,
   /["'](?:reasoning|confidence|provider|model|category|priority|sentiment|escalate)["']\s*:/i,
   /\bconfidence\s*:\s*(?:0?\.\d+|\d{1,3}\s*%)/i,
+  // Prose labels still mean a dump. They are value-scoped so ordinary sentences stay safe:
+  // "contact your provider: Acme" names no gateway and no model id, so it passes.
+  /\breasoning\s*:/i,
+  /\bmodel\s*:\s*(?:[a-z0-9._-]+\/[a-z0-9._-]+|(?:gpt|gemini|claude|deepseek|llama)-[a-z0-9._-]+)/i,
+  /\bprovider\s*:\s*(?:groq|openai|google|anthropic|portkey|openrouter|cerebras|together|mistral|cohere)\b/i,
 ];
 
 // The AI reply is shown to the customer as the support team's answer, so it must not assert that
 // an irreversible action was taken or promise one: nothing in the pipeline performs refunds,
 // unlocks, cancellations or deletions, and a model that says so is inventing a commitment the team
 // never made. Forwarding the request ("passed this to billing") is fine.
+//
+// A refund *request* is not a refund: a following `request`, `inquiry`, `ticket` or `case` turns the
+// promise into forwarding work, so those forms are excluded.
+const REQUEST_NOUN = '(?!\\s+(?:request|inquiry|enquiry|ticket|case)\\b)';
+
 const UNAUTHORIZED_PROMISE = [
   // Past / perfect: the action is presented as already done.
-  /\bwe(?:['\u2019]ve| have| had)?\s+(?:now\s+)?(?:refunded|reimbursed|credited|reversed|charged back)\b/i,
-  /\bwe(?:['\u2019]ve| have| had)?\s+(?:now\s+)?(?:unlocked|restored|reactivated)\b/i,
-  /\bwe(?:['\u2019]ve| have| had)?\s+(?:now\s+)?(?:cancell?ed|terminated|suspended|closed)\s+(?:your|the|this)\b/i,
-  /\bwe(?:['\u2019]ve| have| had)?\s+(?:now\s+)?(?:deleted|erased|purged|removed)\s+(?:your|the|this)\b/i,
+  /\b(?:I|we)(?:['\u2019]ve| have| had)?\s+(?:now\s+)?(?:refunded|reimbursed|credited|reversed|charged back)\b/i,
+  /\b(?:I|we)(?:['\u2019]ve| have| had)?\s+(?:now\s+)?(?:unlocked|restored|reactivated)\b/i,
+  /\b(?:I|we)(?:['\u2019]ve| have| had)?\s+(?:now\s+)?(?:cancell?ed|terminated|suspended|closed)\s+(?:your|the|this)\b/i,
+  /\b(?:I|we)(?:['\u2019]ve| have| had)?\s+(?:now\s+)?(?:deleted|erased|purged|removed)\s+(?:your|the|this)\b/i,
   /\byour\s+(?:refund|account|subscription|data)\s+(?:has\s+been|is\s+now)\s+(?:processed|issued|completed|cancell?ed|deleted|unlocked|restored)\b/i,
   // Future / active: the same unauthorised commitment, stated in advance.
   /\b(?:I|we)(?:['\u2019](?:ll|m|re)| will| am| are)\s+(?:now\s+)?(?:refund|reimburse|credit)\b/i,
-  /\b(?:I|we)(?:['\u2019](?:ll|m|re)| will| am| are)\s+(?:now\s+)?(?:issu\w*|process\w*|send\w*|approv\w*|prepar\w*|releas\w*)\s+(?:a|the|your)\s+(?:full\s+)?(?:refund|credit|reimbursement)\b/i,
+  new RegExp(
+    `\\b(?:I|we)(?:['\\u2019](?:ll|m|re)| will| am| are)\\s+(?:now\\s+)?(?:issu\\w*|process\\w*|send\\w*|prepar\\w*|approv\\w*|releas\\w*)\\s+(?:a|the|your)\\s+(?:full\\s+)?(?:refund|credit|reimbursement|cancellation)\\b${REQUEST_NOUN}`,
+    'i'
+  ),
   /\b(?:I|we)(?:['\u2019](?:ll|m|re)| will| am| are)\s+(?:now\s+)?(?:unlock|restore|reactivate)\s+(?:your|the|this)\b/i,
   /\b(?:I|we)(?:['\u2019](?:ll|m|re)| will| am| are)\s+(?:now\s+)?(?:cancell?|terminate|suspend|close|delete|erase|purge|remove)\s+(?:your|the|this)\s+(?:account|subscription|service|data|order|profile)\b/i,
-  /\byou(?:['\u2019]ll| will)\s+(?:receive|get)\s+(?:a\s+|your\s+)?(?:full\s+)?(?:refund|credit|reimbursement)\b/i,
+  new RegExp(
+    `\\byou(?:['\\u2019]ll| will)\\s+(?:receive|get)\\s+(?:a\\s+|your\\s+)?(?:full\\s+)?(?:refund|credit|reimbursement)\\b${REQUEST_NOUN}`,
+    'i'
+  ),
   /\byour\s+(?:refund|credit|reimbursement|account|subscription)\s+(?:will|shall)\s+be\s+(?:processed|issued|paid|completed|refunded|credited|unlocked|restored|cancell?ed|deleted|closed)\b/i,
-  /\b(?:will|shall)\s+be\s+(?:refunded|credited|reimbursed|unlocked|restored|cancell?ed|deleted|closed)\b/i,
+  // A passive sentence about the ticket's own lifecycle is retention policy, not a commitment to
+  // delete the customer's account or data, so only an account/data object counts, and a retention
+  // qualifier ("after 30 days", "our retention policy") keeps it safe.
+  /\byour\s+(?:account|data|profile|subscription)\s+(?:will|shall)\s+be\s+(?:deleted|removed|erased|purged)\b(?!\s+(?:after|within|in)\s+\d+\s+(?:days?|weeks?|months?|years?))(?![^.]{0,60}\bretention\b)/i,
+  /\b(?:will|shall)\s+be\s+(?:refunded|credited|reimbursed|unlocked|restored|cancell?ed|closed)\b/i,
 ];
 
 const SECRETS = [
