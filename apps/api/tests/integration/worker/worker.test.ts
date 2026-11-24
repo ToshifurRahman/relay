@@ -1068,3 +1068,49 @@ describe('ops recovery end to end (story 5.4)', () => {
     });
   });
 });
+
+describe('processMessage — skipped messages', () => {
+  // A queue delivers messages that cannot be processed as they stand. Both skips below delete
+  // the message rather than retrying, because neither condition improves on a retry: a
+  // malformed id never becomes a UUID, and a ticket another consumer already claimed does not
+  // go back to `queued`.
+  it('deletes the message without reaching the LLM when the ticketId is not a UUID', async () => {
+    await expect(
+      processMessage('not-a-uuid', 'fake-receipt', 1, mockAi())
+    ).resolves.toBeUndefined();
+
+    expect(deleteMessage).toHaveBeenCalledWith('fake-receipt');
+    expect(mockTriage).not.toHaveBeenCalled();
+    expect(mockDraft).not.toHaveBeenCalled();
+  });
+
+  it('deletes a duplicate message when another consumer already claimed the ticket', async () => {
+    const ticket = await insertTicket('TICK-WKR-DUP-001', 'Sub', 'Desc');
+    createdIds.push(ticket.id);
+    // SQS is at-least-once, so a second consumer can receive a message whose ticket another
+    // consumer has already moved off `queued`. The claim is what makes the duplicate visible.
+    await pool.query("UPDATE tickets SET status = 'processing' WHERE id = $1", [ticket.id]);
+
+    await expect(processMessage(ticket.id, 'fake-receipt', 1, mockAi())).resolves.toBeUndefined();
+
+    expect(deleteMessage).toHaveBeenCalledWith('fake-receipt');
+    expect(mockTriage).not.toHaveBeenCalled();
+    expect(mockDraft).not.toHaveBeenCalled();
+    expect((await getTicketById(ticket.id)).status).toBe('processing');
+  });
+
+  it('retries a duplicate message instead of deleting it when the attempt number is above one', async () => {
+    const ticket = await insertTicket('TICK-WKR-DUP-002', 'Sub', 'Desc');
+    createdIds.push(ticket.id);
+    await pool.query("UPDATE tickets SET status = 'processing' WHERE id = $1", [ticket.id]);
+
+    // A retry is the current owner's own re-receive, so the ticket is claimed again and the
+    // message must survive: this one runs the pipeline instead of taking the skip.
+    mockAiSuccess();
+    await expect(processMessage(ticket.id, 'fake-receipt', 2, mockAi())).resolves.toBeUndefined();
+
+    expect(mockTriage).toHaveBeenCalledTimes(1);
+    expect(deleteMessage).toHaveBeenCalledWith('fake-receipt');
+    expect((await getTicketById(ticket.id)).status).toBe('completed');
+  });
+});

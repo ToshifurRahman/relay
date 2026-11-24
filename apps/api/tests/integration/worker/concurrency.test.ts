@@ -118,4 +118,25 @@ describe('run — surge concurrency', () => {
 
     expect(startedBeforeFirstCompletion).toBeGreaterThanOrEqual(5);
   });
+
+  // resolveWorkerConcurrency ignores an override that is not a positive integer, so a bad
+  // value cannot stall the loop: a concurrency of 0 would make `inFlight.size >= concurrency`
+  // true on the first pass, and every message would wait for a slot that never frees. The
+  // observable proof is that the fallback (WORKER_CONCURRENCY, default 10) processed the
+  // ticket, which the zero override could not have done.
+  it('falls back to the configured concurrency when the override is not a positive integer', async () => {
+    const ticket = await insertTicket(
+      `TICK-CONC-ZERO-${Date.now()}`,
+      'Zero override',
+      'Zero override falls back'
+    );
+    createdIds.push(ticket.id);
+    await enqueueTicket(ticket.id, ticket.referenceNumber);
+
+    await run({ concurrency: 0, stopWhenIdle: true, receiveWaitTimeSeconds: 0 });
+
+    expect((await getTicketById(ticket.id)).status).toBe('completed');
+    // Bounded well under the 30s default: if the fallback ever stopped applying, this case
+    // would hang with no slot ever free, and it should fail as a timeout rather than sit there.
+  }, 15_000);
 });

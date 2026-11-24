@@ -35,26 +35,6 @@ export async function getProcessingResultByTicketId(
   };
 }
 
-export async function getTriageOutputByTicketId(ticketId: string): Promise<TriageOutput | null> {
-  const result = await pool.query<
-    Omit<ProcessingRow, 'customer_reply' | 'internal_note' | 'next_steps'>
-  >(
-    `SELECT category, priority, sentiment, escalate, recommended_team, issue_summary
-     FROM ticket_processing WHERE ticket_id = $1`,
-    [ticketId]
-  );
-  if (!result.rows[0]) return null;
-  const row = result.rows[0];
-  return {
-    category: row.category,
-    priority: row.priority,
-    sentiment: row.sentiment,
-    escalate: row.escalate,
-    recommendedTeam: row.recommended_team,
-    issueSummary: row.issue_summary,
-  };
-}
-
 export async function upsertTriageOutput(ticketId: string, result: TriageOutput): Promise<void> {
   await pool.query(
     `INSERT INTO ticket_processing

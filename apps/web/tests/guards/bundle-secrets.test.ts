@@ -73,7 +73,9 @@ function filesUnder(dir: string, extensions: string[]): string[] {
 // Comments are removed first so a commented-out import is not reported. The scan walks the source
 // rather than matching a regex, because a `//` inside a string (a URL, a message) is not a comment
 // and a regex cannot tell the difference. Regex literals are left alone: none in the client source
-// contains `//` or `/*`, and a false positive here fails loudly rather than passing silently.
+// contains `//`, `/*` or a quote, and a false positive here fails loudly rather than passing
+// silently. A quote is the third hazard: `/don't/` opens a string the scanner never closes, so a
+// following commented-out import is reported.
 function withoutComments(source: string): string {
   let out = '';
   let quote: string | null = null;
@@ -128,8 +130,9 @@ function reachesServerCode(specifier: string, fromFile: string): boolean {
   const resolved = path.resolve(path.dirname(fromFile), specifier);
   const relative = path.relative(API_DIR, resolved);
   // `path.relative` gives `../…` for anything outside, so a sibling like `apps/api-other` is not
-  // mistaken for the API directory.
-  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+  // mistaken for the API directory. An empty result is the API directory itself (`../../api`),
+  // which is server code too, so it is rejected rather than skipped.
+  return !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
 function serverImportsIn(files: string[]): string[] {
@@ -227,6 +230,9 @@ describe('client bundle secrets', () => {
       ["import { x } from '@relay/api';", shallow],
       ["import { x } from '@relay/api/lib/config.js';", shallow],
       ["import { x } from 'apps/api/src/lib/config.js';", shallow],
+      // The API directory itself: `../../api` from `apps/web/src/` resolves exactly to
+      // `apps/api`, so it must be rejected even though nothing resolves there today.
+      ["import { x } from '../../api';", shallow],
     ];
     for (const [line, from] of rejected) {
       expect(moduleSpecifiers(line).some((spec) => reachesServerCode(spec, from))).toBe(true);

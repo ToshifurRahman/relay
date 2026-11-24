@@ -286,6 +286,24 @@ test.describe('360px viewport', () => {
 });
 
 test.describe('keyboard', () => {
+  // Each page's own content, not just the layout: the layout's `#main` appears while the lazy
+  // page is still in Suspense, and a page that mounts after the first Tab can move focus. Waiting
+  // for the page's ready marker makes the first Tab land on the skip link every time.
+  const ready: Record<string, (page: Page) => Promise<void>> = {
+    '/': async (page) => {
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    },
+    '/new': async (page) => {
+      await page.getByLabel('Subject').waitFor(); // the form is lazy-loaded
+    },
+    '/ops': async (page) => {
+      // Signed in, the console's tab list is the last thing to mount; signed out, the token field.
+      await expect(
+        page.getByRole('tablist', { name: 'Filter by status' }).or(page.getByLabel('Ops token'))
+      ).toBeVisible();
+    },
+  };
+
   for (const path of ['/', '/new', '/ops']) {
     test(`skip link first, visible focus after: ${path}`, async ({ page, request }) => {
       await stubTurnstile(page);
@@ -294,7 +312,7 @@ test.describe('keyboard', () => {
       if (path === '/ops') await signInWithCookie(page, request);
       await page.goto(path);
       await page.locator('#main').waitFor(); // the ops layout is lazy-loaded
-      if (path === '/new') await page.getByLabel('Subject').waitFor(); // so is the form
+      await ready[path](page);
       await page.keyboard.press('Tab');
 
       const skip = page.getByRole('link', { name: 'Skip to content' });
