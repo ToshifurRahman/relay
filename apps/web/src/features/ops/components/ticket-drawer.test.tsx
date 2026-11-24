@@ -304,7 +304,9 @@ describe('replaying', () => {
     );
 
     expect(
-      await screen.findByText('TICK-1759993412345-A1B2C3D4 replayed. The team re-queued it.')
+      await screen.findByText(
+        'TICK-1759993412345-A1B2C3D4 replayed. Re-queued from the ops console.'
+      )
     ).toBeInTheDocument();
     expect(posts).toBe(1);
     // The confirm step is gone and the button is back.
@@ -354,7 +356,7 @@ describe('replaying', () => {
     await user.click(await screen.findByRole('button', { name: /Replay from/ }));
     const confirmButton = screen.getByRole('button', { name: 'Confirm' });
     await user.dblClick(confirmButton);
-    await screen.findByText(/replayed. The team re-queued it/);
+    await screen.findByText(/replayed. Re-queued from the ops console/);
     expect(posts).toBe(1);
   });
 });

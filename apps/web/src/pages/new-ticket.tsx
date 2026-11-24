@@ -15,8 +15,8 @@ export function NewTicketPage() {
           How can we help?
         </h1>
         <p className="mt-4 max-w-[36em] text-lg text-muted-foreground">
-          Describe the problem and you'll get a tracking link right away. Most replies arrive within
-          a minute.
+          Describe the problem and you'll get a tracking link right away. The page follows the
+          ticket through each stage.
         </p>
       </div>
 

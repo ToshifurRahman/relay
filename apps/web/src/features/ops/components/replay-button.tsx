@@ -24,7 +24,7 @@ export function ReplayButton({ ticketId, reference, stage }: ReplayButtonProps) 
   const [confirming, setConfirming] = useState(false);
   const mutation = useMutation({
     mutationFn: () => replayTicket(ticketId),
-    onSuccess: () => toast.success(`${reference} replayed. The team re-queued it.`),
+    onSuccess: () => toast.success(`${reference} replayed. Re-queued from the ops console.`),
     onError: (error) => toast.error(failureMessage(error)),
     onSettled: () => {
       setConfirming(false);

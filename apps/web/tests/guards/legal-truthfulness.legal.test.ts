@@ -14,6 +14,9 @@ const SRC = path.join(WEB, 'src');
 
 const source = (file: string) => readFileSync(path.join(SRC, file), 'utf8');
 
+// JSX wraps a sentence across lines, so match against the sentence, not the source layout.
+const flat = (text: string) => text.replace(/\s+/g, ' ');
+
 const brand = source('config/brand.ts');
 const legal = source('content/legal.ts');
 const landing = source('features/landing/content.ts');
@@ -21,7 +24,9 @@ const pricing = source('features/landing/components/pricing.tsx');
 const footer = source('app/layout/site-footer.tsx');
 const thread = source('features/tickets/components/ticket-thread.tsx');
 const success = source('features/tickets/components/ticket-success.tsx');
+const newTicket = source('pages/new-ticket.tsx');
 const pill = source('features/tickets/components/status-pill.tsx');
+const replay = source('features/ops/components/replay-button.tsx');
 
 describe('legal pages name every real processor (7.12.9 check 1)', () => {
   it('points the legal contact at the renamed repository', () => {
@@ -30,10 +35,13 @@ describe('legal pages name every real processor (7.12.9 check 1)', () => {
   });
 
   it('names each processor the deployment actually uses', () => {
+    // The cache provider is the one `docs/production-infra.md` records for production: Redis
+    // Cloud. The code reaches it through the generic `redis` client on REDIS_URL, so only the
+    // runbook knows the company, and the page must agree with the runbook.
     for (const processor of [
       'Render',
       'Neon',
-      'Upstash',
+      'Redis Cloud',
       'AWS',
       'Brevo',
       'Cloudflare',
@@ -43,6 +51,18 @@ describe('legal pages name every real processor (7.12.9 check 1)', () => {
     ]) {
       expect(legal).toContain(processor);
     }
+  });
+
+  it('names no processor the deployment does not use', () => {
+    // A phantom provider is as untrue as a missing one, and this one was on the page once.
+    expect(legal).not.toMatch(/Upstash/);
+  });
+
+  it('bounds the IP rate-limit counter to an hour or less', () => {
+    // Every IP-keyed key expires in <= 1 h: tickets:ip 3600 s, notify:optin 3600 s, the ops
+    // sign-in lockout 900 s. The 25 h window belongs to tickets:day, which holds no address.
+    expect(legal).toMatch(/an hour or less/i);
+    expect(legal).not.toMatch(/a little over a day|a day at most/i);
   });
 
   it('does not claim analytics that the built site may not ship', () => {
@@ -62,7 +82,7 @@ describe('nothing suggests a real company or a support team (check 2 and 4)', ()
   });
 
   it('does not claim a team that the demo does not have', () => {
-    for (const file of [landing, thread, pill]) {
+    for (const file of [landing, thread, newTicket, pill, success]) {
       expect(file).not.toMatch(/the team\b/i);
       expect(file).not.toMatch(/our team/i);
       expect(file).not.toMatch(/support team/i);
@@ -70,7 +90,17 @@ describe('nothing suggests a real company or a support team (check 2 and 4)', ()
   });
 
   it('makes no unmeasured delivery promise', () => {
-    expect(success).not.toMatch(/within a minute/i);
+    // The lead on /new and the success panel are the same page; a promise on one is a promise.
+    // JSX wraps the sentence, so flatten the source before matching it.
+    for (const file of [newTicket, success]) {
+      expect(flat(file)).not.toMatch(/within a minute/i);
+      expect(flat(file)).not.toMatch(/usually arrives/i);
+    }
+  });
+
+  it('points the ops console at the console, not a team', () => {
+    expect(replay).toMatch(/Re-queued from the ops console/);
+    expect(replay).not.toMatch(/the team\b/i);
   });
 });
 
@@ -79,14 +109,11 @@ describe('the site says it is a portfolio demo (check 3 and 4)', () => {
     expect(footer).toMatch(/portfolio demo/i);
   });
 
-  it('renders the pricing note inside the rates section', () => {
-    expect(pricing).toMatch(/PRICING_HEADING\.note/);
-  });
-
-  it('labels the pricing as illustrative and sells nothing', () => {
+  it('labels the pricing as illustrative, renders the note, and sells nothing', () => {
     // The note sits beside the tier heading and the buttons only ever open the demo form.
     expect(landing).toMatch(/Illustrative rates/i);
     expect(landing).toMatch(/not real plans/i);
+    expect(pricing).toMatch(/PRICING_HEADING\.note/);
     for (const command of ['Start free', 'Start with Team', 'Ask us']) {
       expect(landing).not.toContain(command);
     }
