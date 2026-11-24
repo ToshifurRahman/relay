@@ -8,8 +8,3 @@ export function getSocket(): Socket {
   socket ??= io({ autoConnect: false });
   return socket;
 }
-
-export function resetSocketForTests(): void {
-  socket?.disconnect();
-  socket = null;
-}

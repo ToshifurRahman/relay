@@ -12,6 +12,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 
 import { Analytics } from '@/app/analytics';
+import { ErrorBoundary } from '@/components/error-boundary';
 import { createQueryClient } from '@/lib/query-client';
 
 import { AppRoutes } from './routes';
@@ -23,7 +24,11 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Analytics />
-        <AppRoutes />
+        {/* Last resort above the layouts: a failure in the shell itself (header, footer,
+            providers) still prints the recovery panel instead of clearing the page. */}
+        <ErrorBoundary>
+          <AppRoutes />
+        </ErrorBoundary>
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>

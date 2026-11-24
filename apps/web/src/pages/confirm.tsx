@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { FormHeader } from '@/components/form/form-header';
@@ -8,6 +8,7 @@ import { Stamp } from '@/components/form/stamp';
 import { Button } from '@/components/ui/button';
 import { brand } from '@/config/brand';
 import { confirmNotification, previewConfirmation } from '@/features/tickets';
+import { ApiError } from '@/lib/api';
 
 // The link in the email lands here, and only the button changes anything: mail scanners open
 // links on their own, and a GET that confirmed would let them confirm for the customer.
@@ -29,12 +30,43 @@ export function ConfirmPage() {
     retry: false,
   });
   const confirm = useMutation({ mutationFn: () => confirmNotification(token) });
+  // A failed click must keep its retry panel on screen while the retry runs: `isError` turns false
+  // the moment `mutate()` is called again, so the mutation's own state would drop the panel and
+  // bounce the page back to the Confirm button. Only a 410 (spent token) clears it.
+  const [clickFailed, setClickFailed] = useState(false);
+  const clickConfirm = () =>
+    confirm.mutate(undefined, {
+      onError: (error) => setClickFailed(!(error instanceof ApiError && error.status === 410)),
+    });
 
   if (preview.isPending) {
     return (
       <p aria-busy="true" className="text-muted-foreground">
         Checking your link…
       </p>
+    );
+  }
+
+  // A cold start, a 502/503 or a dropped connection is not the same as a dead token. Saying
+  // "expired" here would tell a customer their live link is spent when the API was merely asleep,
+  // so the two are kept apart: only a refusal of the token itself claims expiry.
+  if (preview.isError) {
+    return (
+      <Panel title="We couldn't check this link" referenceNumber="-">
+        <p>
+          We couldn't reach the server just now. Your link may still be good — try again in a
+          moment.
+        </p>
+        <div>
+          <Button
+            variant="solid"
+            onClick={() => void preview.refetch()}
+            disabled={preview.isFetching}
+          >
+            {preview.isFetching ? 'Trying...' : 'Try again'}
+          </Button>
+        </div>
+      </Panel>
     );
   }
 
@@ -66,6 +98,22 @@ export function ConfirmPage() {
     );
   }
 
+  // Same distinction for the click: the server answers a spent token with 410. Anything else —
+  // an outage mid-confirm — must offer another go rather than declare the link dead. The panel
+  // stays mounted across the retry so the failure does not flash back to the Confirm button.
+  if (clickFailed) {
+    return (
+      <Panel title="We couldn't confirm just now" referenceNumber="-">
+        <p>Nothing was changed. Check your connection and try again.</p>
+        <div>
+          <Button variant="solid" onClick={clickConfirm} disabled={confirm.isPending}>
+            {confirm.isPending ? 'Confirming...' : 'Try again'}
+          </Button>
+        </div>
+      </Panel>
+    );
+  }
+
   if (!preview.data?.valid || confirm.isError) {
     return (
       <Panel title="This link has expired or was already used" referenceNumber="-">
@@ -91,7 +139,7 @@ export function ConfirmPage() {
         <strong>{preview.data.maskedEmail}</strong>?
       </p>
       <div>
-        <Button variant="solid" onClick={() => confirm.mutate()} disabled={confirm.isPending}>
+        <Button variant="solid" onClick={clickConfirm} disabled={confirm.isPending}>
           {confirm.isPending ? 'Confirming...' : 'Confirm'}
         </Button>
       </div>

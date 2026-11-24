@@ -12,10 +12,6 @@ const PILLS: Record<TicketStatus, { label: string; tone: string }> = {
   needs_attention: { label: 'With our team', tone: 'text-muted-foreground' },
 };
 
-export function statusLabel(status: TicketStatus): string {
-  return PILLS[status].label;
-}
-
 // A small stamp: outline in the status colour, set at the shared tilt.
 export function StatusPill({ status }: { status: TicketStatus }) {
   const { label, tone } = PILLS[status];

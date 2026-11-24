@@ -15,7 +15,11 @@ export function SiteHeader() {
   return (
     <header className="on-hero">
       <div className="mx-auto flex h-16 max-w-(--page-width) items-center justify-between gap-4 px-4">
-        <Link to="/" aria-label="Home" className="text-foreground no-underline hover:no-underline">
+        <Link
+          to="/"
+          aria-label="Relay home"
+          className="text-foreground no-underline hover:no-underline"
+        >
           <Wordmark />
         </Link>
         <nav className="flex items-center gap-6" aria-label="Main">
