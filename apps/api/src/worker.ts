@@ -2,6 +2,7 @@
 // the resume-from-failure state, so splitting it would scatter rules that must read together.
 import { setTimeout as sleep } from 'node:timers/promises';
 
+import { checkCustomerReply, type ReplyRejection } from './domain/customer-reply-guard.js';
 import { TicketNotFoundError } from './domain/errors.js';
 import { UUID_RE } from './domain/ids.js';
 import {
@@ -136,6 +137,20 @@ async function setNeedsAttention(
 
 function incompleteOutputDetail(validation: ValidationResult): string {
   return `Incomplete output: missing fields [${validation.missingFields.join(', ')}]`;
+}
+
+// The draft ran but its `customerReply` failed the output guard. Only the fixed reason code is
+// recorded: the reply itself may quote the prompt, internal fields or a secret (story 7.12.8).
+// Marked `<stage>.invalid` like an incomplete output so a replay re-runs just the draft.
+async function setUnsafeReply(
+  ticket: TicketRef,
+  reason: ReplyRejection,
+  receiptHandle: string
+): Promise<void> {
+  const detail = `Unsafe customer reply blocked: ${reason}`;
+  await recordTicketEvent(ticket, 'draft.invalid', detail);
+  emitTicketUpdate(ticket.id, 'draft.invalid');
+  await setNeedsAttention(ticket, 'unsafe_output', detail, receiptHandle);
 }
 
 // The stage ran but its output is unusable. `<stage>.invalid` marks which stage it was, so a
@@ -341,6 +356,14 @@ async function runPipeline(
       await recordTicketEvent(ticket, 'draft.started');
       emitTicketUpdate(ticketId, 'draft.started');
       const output = await ai.draft(ticketId, ticket.subject, ticket.description, triageOutput);
+      // Checked before the row is written: an unsafe reply must never reach the database, the
+      // public view or the customer email (story 7.12.8). Only the fixed reason travels on, never
+      // the reply itself, which can quote the prompt or internal fields.
+      const replyCheck = checkCustomerReply(output.customerReply);
+      if (!replyCheck.safe) {
+        await setUnsafeReply(ticket, replyCheck.reason, receiptHandle);
+        return;
+      }
       await completeDraftOutput(ticketId, output);
       draft = output;
     } catch (err) {

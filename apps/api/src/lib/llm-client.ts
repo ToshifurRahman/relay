@@ -3,6 +3,7 @@
 import { createHeaders, PORTKEY_GATEWAY_URL } from 'portkey-ai';
 import { z } from 'zod';
 
+import { buildDraftMessages, buildTriageMessages } from '../domain/prompt-boundary.js';
 import { collectIssues, getConfig } from './config.js';
 
 export const TriageOutputSchema = z.object({
@@ -221,14 +222,18 @@ async function callLlmWithFunction<T>(
     throw new LlmCallError('invalid_response', 'LLM response was not JSON', response.status);
   }
 
-  const functionCall = data.choices[0]?.message.function_call;
+  // A 200 with a body that is not the documented shape (no `choices` array, or a `choices` that
+  // is not an array) would otherwise throw a raw TypeError out of the worker. Treated as an
+  // invalid response so the fallback and needs_attention paths see one coded error.
+  const choice = Array.isArray(data?.choices) ? data.choices[0] : undefined;
+  const functionCall = choice?.message?.function_call;
   if (!functionCall) {
     throw new LlmCallError('invalid_response', 'No function call in LLM response', response.status);
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(functionCall.arguments);
+    parsed = JSON.parse(typeof functionCall.arguments === 'string' ? functionCall.arguments : '');
   } catch {
     throw new LlmCallError(
       'invalid_response',
@@ -277,16 +282,9 @@ export async function triage(
     });
   }
 
-  const systemPrompt =
-    'You are a support ticket triage agent. Analyze the ticket and classify it accurately.';
-  const userPrompt = `Triage this support ticket:\n\nSubject: ${subject}\nDescription: ${description}`;
-
   return callLlmWithFunction(
     provider,
-    [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
+    buildTriageMessages(subject, description),
     TriageOutputSchema,
     'triage_output',
     {
@@ -318,27 +316,9 @@ export async function draft(
     });
   }
 
-  const systemPrompt =
-    'You are a support agent. Write a helpful, empathetic response draft based on the ticket and triage findings.';
-  const userPrompt = `Write a response draft for this support ticket.
-
-Subject: ${subject}
-Description: ${description}
-
-Triage findings:
-- Category: ${triageOutput.category}
-- Priority: ${triageOutput.priority}
-- Customer sentiment: ${triageOutput.sentiment}
-- Escalate: ${triageOutput.escalate}
-- Recommended team: ${triageOutput.recommended_team}
-- Issue summary: ${triageOutput.issue_summary}`;
-
   return callLlmWithFunction(
     provider,
-    [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
+    buildDraftMessages(subject, description, triageOutput),
     DraftOutputSchema,
     'draft_output',
     {

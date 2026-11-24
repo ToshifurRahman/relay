@@ -24,7 +24,8 @@ export interface OpsTicketEvent {
 
 // A closed set rather than a string: the only way to say why a ticket needs attention is
 // to pick one of these, so a raw error message can't be passed through by accident.
-export type NeedsAttentionReason = 'incomplete_output' | 'processing_result_missing';
+export type NeedsAttentionReason =
+  'incomplete_output' | 'processing_result_missing' | 'unsafe_output';
 
 // Why processing gave up on a ticket for good (status `failed`). Also the closed set the
 // `tickets.failure_reason` column accepts (migration 007).
