@@ -3,13 +3,14 @@ import { Link } from 'react-router-dom';
 import { brand } from '@/config/brand';
 
 // The form's bottom rule: one hairline inside the page column. The legal links are printed
-// chrome, underlined like the demo's.
+// chrome, underlined like the demo's. The demo label is repeated here so every public page,
+// including one reached from a shared link, says what the site is before anyone trusts it.
 export function SiteFooter() {
   return (
     <footer className="bg-background px-4">
       <div className="button-caps mx-auto flex max-w-(--content-width) flex-wrap items-center justify-between gap-4 border-t py-6 text-xs text-muted-foreground">
         <span>
-          © {brand.name} · {brand.tagline}
+          © {brand.name} · {brand.tagline} · Portfolio demo, not a real service
         </span>
         <nav aria-label="Legal">
           <Link to="/legal/privacy" className="text-inherit">

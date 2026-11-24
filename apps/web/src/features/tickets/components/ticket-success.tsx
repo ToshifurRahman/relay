@@ -41,7 +41,8 @@ export function TicketSuccess({ referenceNumber, createdAt, onSubmitAnother }: T
           </span>
         </div>
         <p className="text-base text-muted-foreground">
-          Keep your reference to come back to this ticket. A reply usually arrives within a minute.
+          Keep your reference to come back to this ticket. The page updates itself as the ticket
+          moves.
         </p>
 
         <div className="grid gap-2">

@@ -13,6 +13,7 @@ export const brand = {
   // Browser UI colour: the carbon ground (primitive.color.carbon in web/tokens/colors.json).
   // A meta tag needs a literal; tests/web-tokens.guard.test.ts keeps it equal to the token.
   themeColor: '#08130F', // ds-allow-hardcode: <meta name="theme-color"> cannot read CSS variables
-  // Where the legal pages point people who have a question. Update with the repo rename (7.11).
-  repoUrl: 'https://github.com/ToshifurRahman/ticket-pipe',
+  // Where the legal pages point people who have a question. The old ticket-pipe URL still
+  // redirects here, but every page links the current repository name.
+  repoUrl: 'https://github.com/ToshifurRahman/relay',
 } as const;

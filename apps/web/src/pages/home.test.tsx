@@ -61,7 +61,7 @@ describe('landing page', () => {
     renderHome();
     const links = [
       screen.getByRole('link', { name: /submit a ticket/i }),
-      ...screen.getAllByRole('link', { name: /start free|start with team|ask us/i }),
+      ...screen.getAllByRole('link', { name: /try the demo/i }),
     ];
     expect(links).toHaveLength(4);
     links.forEach((link) => expect(link).toHaveAttribute('href', '/new'));

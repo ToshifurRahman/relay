@@ -16,6 +16,9 @@ export function Pricing() {
       >
         {PRICING_HEADING.title}
       </h2>
+      <p className="mx-auto mb-8 max-w-[52ch] text-center text-muted-foreground">
+        {PRICING_HEADING.note}
+      </p>
       <ul className="ruled grid divide-y divide-rule md:grid-cols-3 md:divide-x md:divide-y-0">
         {TIERS.map((tier, i) => (
           <TierCard key={tier.name} tier={tier} index={i} />

@@ -314,8 +314,8 @@ describe('NewTicketPage: recent tickets', () => {
     ['queued', 'Processing'],
     ['processing', 'Processing'],
     ['completed', 'Replied'],
-    ['failed', 'With our team'],
-    ['needs_attention', 'With our team'],
+    ['failed', 'Needs review'],
+    ['needs_attention', 'Needs review'],
   ])('shows a %s ticket as "%s"', async (status, label) => {
     acceptTickets(status);
     seed(REF);

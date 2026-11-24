@@ -83,7 +83,7 @@ describe('customer emails', () => {
     expect(buildSnagEmail(ctx).subject).toBe('A snag on TICK-1760000000000-7A4D2C9E');
     expect(buildSnagEmail(ctx).text).toBe(
       [
-        'We hit a snag while working on “Export broken” (TICK-1760000000000-7A4D2C9E) It’s on hold and flagged for the team.',
+        'We hit a snag while working on “Export broken” (TICK-1760000000000-7A4D2C9E) It’s on hold and flagged on the ops console.',
         'If a reply follows, we’ll email you.',
         '',
         `View my ticket: ${ctx.url}`,

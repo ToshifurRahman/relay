@@ -40,7 +40,7 @@ describe('buildAlertMessage', () => {
   it('holds only the reference number, ticket id, reason and time', () => {
     const { subject, message } = buildAlertMessage(needsAttention());
 
-    expect(subject).toBe('[Ticket Pipe] TICK-ALERT-001 needs attention (incomplete_output)');
+    expect(subject).toBe('[Relay] TICK-ALERT-001 needs attention (incomplete_output)');
     expect(message).toBe(
       [
         'Ticket TICK-ALERT-001 needs attention.',

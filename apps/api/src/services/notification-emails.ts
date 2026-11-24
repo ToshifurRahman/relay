@@ -132,7 +132,7 @@ export function buildSnagEmail(ctx: EmailContext): Built {
   return build(
     `A snag on ${ctx.referenceNumber}`,
     [
-      `We hit a snag while working on “${ctx.subject}” (${ctx.referenceNumber}) It’s on hold and flagged for the team.`,
+      `We hit a snag while working on “${ctx.subject}” (${ctx.referenceNumber}) It’s on hold and flagged on the ops console.`,
       'If a reply follows, we’ll email you.',
     ],
     ctx,

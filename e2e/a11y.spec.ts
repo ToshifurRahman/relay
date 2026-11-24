@@ -167,7 +167,7 @@ const visits: Visit[] = [
     name: 'ticket needs attention',
     open: async (p) => {
       await p.goto(`/t/${attention.ref}`);
-      await expect(p.getByText(/flagged for the team/)).toBeVisible();
+      await expect(p.getByText(/flagged on the ops console/)).toBeVisible();
       await expect(p.getByLabel('Email address')).toBeVisible();
     },
   },

@@ -114,7 +114,7 @@ test('no CSP violation on the landing page, a signed-in /ops and a real ticket t
   const socket = await socketConnected;
   // Wait for the settled state first: the socket is open for as long as the page listens, and
   // needs_attention never stops it, so this is a condition, not a timing guess.
-  await expect(page.getByText(/flagged for the team/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/flagged on the ops console/)).toBeVisible({ timeout: 15_000 });
   expect(socket.isClosed()).toBe(false);
   await expectNoViolations(page, 'thread');
 });

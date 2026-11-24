@@ -76,7 +76,7 @@ describe('alertNeedsAttention against LocalStack', () => {
     const envelope = JSON.parse(Messages![0].Body!) as { Subject: string; Message: string };
     const expected = ops.buildAlertMessage(alert);
     expect(envelope.Subject).toBe(
-      '[Ticket Pipe] TICK-SNS-057 needs attention (processing_result_missing)'
+      '[Relay] TICK-SNS-057 needs attention (processing_result_missing)'
     );
     expect(envelope.Message).toBe(expected.message);
   });

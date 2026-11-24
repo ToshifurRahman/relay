@@ -22,7 +22,7 @@ export interface AlertMessage {
 export function buildAlertMessage(alert: OpsNeedsAttention): AlertMessage {
   const { referenceNumber, ticketId, reason } = alert;
   return {
-    subject: `[Ticket Pipe] ${referenceNumber} needs attention (${reason})`,
+    subject: `[Relay] ${referenceNumber} needs attention (${reason})`,
     message: [
       `Ticket ${referenceNumber} needs attention.`,
       '',

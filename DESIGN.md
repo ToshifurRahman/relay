@@ -213,7 +213,7 @@ Ruled field: 48px, 1px `input` border, transparent ground, Public Sans 16px, pla
 **Stamp** is printed caps set at the shared tilt. **ToneChip** is a stamp with a 1px border: outline (colour on text and rule, for a ticket's own page) or fill (bright slab with dark rule, for a key on a coloured ply). Category is matched from free text; the model's `critical` priority shows as urgent.
 
 ### Status
-**OpsStatusBadge**: caps, 1px current-colour border, square pip. queued is muted, processing is live-ink yellow, completed is mint, failed is coral, needs_attention is high-priority orange. Customer-facing pill folds failures into "With our team".
+**OpsStatusBadge**: caps, 1px current-colour border, square pip. queued is muted, processing is live-ink yellow, completed is mint, failed is coral, needs_attention is high-priority orange. Customer-facing pill folds both failures into "Needs review".
 
 ### Navigation
 Top bar and hero share the green `hero` band (`.on-hero`). Brand mark plus "Relay", Track field, button-caps links (hidden below `md`). Skip link first. Links are underlined (1px, 2px on hover).
@@ -241,8 +241,8 @@ Customer emails (`apps/api/src/services/notification-emails.ts`) are Carbon Set 
 
 From PRODUCT.md: believable, not demonstrative.
 - Show the work: say what stage the ticket is in, specifically.
-- Failure is calm and neutral ("On hold", "With our team") with a next step; no error details to the customer.
-- Never promise what the pipeline cannot keep: no human follow-up, no guaranteed times beyond the two kept lines below.
+- Failure is calm and neutral ("On hold", "Needs review") with a next step; no error details to the customer.
+- Never promise what the pipeline cannot keep: no human follow-up, no guaranteed times.
 - No invented customers, logos, testimonials, stats or benchmarks. Pricing is cosmetic. Architecture and tech detail stay in the README.
 - Brand name "Relay", tagline "AI help desk"; copy lives in `apps/web/src/config/brand.ts`, `apps/web/src/features/landing/content.ts` and `apps/web/src/content/legal.ts`.
 - Plain language, short sentences, no em-dash filler.
@@ -270,4 +270,3 @@ Accepted at ship:
 - Ops list at 375px clips the Subject column without an ellipsis. Cosmetic; the drawer shows the full title.
 - The empty gap above NOTIFY ME / SUBMIT on a phone is the Turnstile slot reserved for Cloudflare's 65px widget. It only looks empty when the widget is stubbed in captures.
 - "On hold" always sits on ply 4 with plies 1 to 3 painted done, as in the demo.
-- The two "within a minute" /new copy lines are kept by decision (see the deviations file).

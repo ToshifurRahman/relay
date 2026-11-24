@@ -11,7 +11,7 @@ const TONES: Record<TicketStatus, string> = {
   needs_attention: 'text-priority-high',
 };
 
-// Ops sees the real status; the customer-facing pill folds failures into "With our team".
+// Ops sees the real status; the customer-facing pill folds failures into "Needs review".
 export function OpsStatusBadge({ status }: { status: TicketStatus }) {
   return (
     <span

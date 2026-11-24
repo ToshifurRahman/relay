@@ -13,12 +13,14 @@ export type LegalDoc = {
 
 // Keep these pages true:
 //  - The company list names the real providers (src/lib/llm-client.ts, src/lib/mailer.ts, Render,
-//    Neon, Upstash, AWS, Cloudflare, Brevo). Change a provider, change the list.
+//    Neon, Redis Cloud, AWS, Cloudflare, Brevo). Change a provider, change the list. The cache
+//    provider is the one docs/production-infra.md records, reached through the generic redis
+//    client, so the runbook is the source for the company name.
 //  - The email promises (what is sent, what is kept) match src/services/customer-notifications.ts.
 //  - RETENTION_DAYS in src/services/ticket-retention.ts is the number promised here.
 export const RETENTION_DAYS_TEXT = '30 days';
 
-export const DEMO_NOTICE = `${brand.name} is a portfolio demo, not a real service. These pages are a plain-language mock of what a real one would say.`;
+export const DEMO_NOTICE = `${brand.name} is a portfolio demo, not a real service. These pages describe, in plain language, how this demo works and what it does with your data.`;
 
 export const PRIVACY: LegalDoc = {
   title: 'Privacy',
@@ -31,6 +33,7 @@ export const PRIVACY: LegalDoc = {
         'The subject and description you put in a ticket, and nothing else you type.',
         'We also keep the ticket’s progress (received, triaged, drafted, replied) and the AI’s answer.',
         'If you ask us to email you, your email address. We use it only to send that ticket’s confirmation link, a “reply is ready” notice and, if something goes wrong, one “we’re looking into it” notice.',
+        'Your IP address, for an hour or less, to rate-limit abuse. It is kept only as a counter in the cache and is never stored with the ticket.',
       ],
     },
     {
@@ -44,7 +47,7 @@ export const PRIVACY: LegalDoc = {
       heading: 'Who handles your ticket',
       body: [
         'Your ticket text is sent to AI providers (Groq, and Google as a backup) through Portkey, so they can sort it and draft a reply.',
-        'Cloudflare checks that you’re not a bot (Turnstile) and counts visits without cookies (Web Analytics). The site runs on Render, Neon (database), Upstash (cache) and AWS (queue and staff alerts).',
+        'Cloudflare delivers the site, checks that you’re not a bot (Turnstile, which also sees your IP address when you submit a form) and, when visit counting is switched on, counts visits without cookies (Web Analytics). The site runs on Render, Neon (database), Redis Cloud (cache) and AWS (queue and staff alerts). An AWS alert to the operator holds only the ticket’s reference, a reason code and a time.',
         'Brevo sends the notification emails. It sees your address, the ticket’s subject and its reference, never the description or the reply.',
         'These companies handle data under their own terms and may keep their own logs. Please don’t send anything sensitive.',
       ],
@@ -65,7 +68,8 @@ export const PRIVACY: LegalDoc = {
     {
       heading: 'Visit counts',
       body: [
-        'Cloudflare Web Analytics counts page views. It sets no cookies and doesn’t follow you from site to site.',
+        'When visit counting is switched on, Cloudflare Web Analytics counts page views. It sets no cookies and doesn’t follow you from site to site. It is never loaded on a confirmation link, because that link carries a token.',
+        'If it is switched off, the site sets no analytics cookie or beacon at all.',
       ],
     },
     {
