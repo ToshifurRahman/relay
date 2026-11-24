@@ -122,17 +122,22 @@ const UNAUTHORIZED_PROMISE = [
 
 // Privacy copy tells a customer that the ticket itself is removed under a retention policy or after
 // a retention window. That is policy, not a commitment to delete an account, a message or a file, so
-// exactly that clause is exempted from the passive deletion arm. The match stops at the qualifier,
-// never crosses a comma, semicolon or full stop, the gap before the verb cannot span a second
-// passive deletion, and the tail before the qualifier is an allowlist of locative phrases only, so a
-// comma-free compound ("... will be deleted and your account will be deleted after 30 days") or a
-// promise clause ("... will be deleted so I refunded the charge after 30 days") leaves the promise
-// visible to the arms.
+// exactly that clause is exempted from the passive deletion arm. The subject reuses the arm it
+// exempts and names only the ticket's own parts, so the auxiliary forms and interposed adverbs the
+// arm covers are exempt too, while a coordinated second subject ("... and your account will be
+// deleted ...") is not. The match stops at the qualifier, never crosses a comma, semicolon or full
+// stop, and the tail is an allowlist of locative phrases only, so a compound or a promise clause
+// ("... will be deleted so I refunded the charge after 30 days") leaves the promise visible to the
+// arms.
+// The window is intentionally numeric: "after six weeks" is not exempted, because an unbounded
+// duration phrase is ambiguous enough to fail closed.
 const RETENTION_WINDOW = String.raw`\s+(?:after|within|in)\s+\d+\s+(?:days?|weeks?|months?|years?)\b`;
 const RETENTION_POLICY_LABEL = String.raw`(?:per|under|pursuant\s+to|in\s+line\s+with)\s+(?:our|the|its)\s+(?:\d+[-\s]?day\s+)?retention\s+polic(?:y|ies)\b`;
 const RETENTION_ADVERB = String.raw`permanently|fully|securely|automatically`;
+// Intentionally narrow: only a locative phrase or a bare adverb may sit between the deletion verb and
+// the qualifier, so an unlisted word order rejects rather than risking a stripped promise.
 const RETENTION_TAIL = String.raw`(?:(?:\s+(?:${RETENTION_ADVERB}))?(?:\s+(?:from|in|at|within)\s+(?:our|the|its)\s+[a-z][a-z-]{1,19}|\s+(?:${RETENTION_ADVERB}))){0,2}`;
-const RETENTION_SUBJECT = String.raw`\b(?:your|the)\s+ticket\b(?:(?!${PASSIVE_DELETION})[^.!?\n,;]){0,80}?\b(?:will|shall)\s+be\s+${DELETION_VERB}\b`;
+const RETENTION_SUBJECT = String.raw`\b(?:your|the|this)\s+ticket(?:\s+and\s+its\s+(?:replies|messages|attachments|history|thread|records|details|contents))?\s+${PASSIVE_DELETION}`;
 
 const RETENTION_POLICY = new RegExp(
   `${RETENTION_POLICY_LABEL}[,\\s]*${RETENTION_SUBJECT}|${RETENTION_SUBJECT}${RETENTION_TAIL}(?:${RETENTION_WINDOW}|\\s+${RETENTION_POLICY_LABEL})`,

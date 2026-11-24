@@ -54,6 +54,23 @@ describe('customer reply guard', () => {
     ['a queue retention window', 'Your ticket will be deleted from our queue after 30 days.'],
     ['a system retention window', 'Your ticket will be deleted from the system within 7 days.'],
     ['an archive retention window', 'Your ticket will be deleted from our archive in 90 days.'],
+    // Review round 8: the exemption reuses the passive deletion arm, so the auxiliary forms and
+    // interposed adverbs that arm covers are exempt in the ticket clause too.
+    [
+      'a modal adverb retention deletion',
+      'Your ticket will be automatically deleted after 30 days.',
+    ],
+    ['a permanent retention deletion', 'Your ticket will be permanently deleted after 30 days.'],
+    [
+      'a fully deleted queue retention',
+      'Your ticket will be fully deleted from our queue after 30 days.',
+    ],
+    ['a get-passive retention window', 'Your ticket gets deleted after 30 days.'],
+    ['a periphrastic retention window', 'Your ticket is going to be deleted after 30 days.'],
+    [
+      'a leading qualifier with an adverb',
+      'Per our retention policy, your ticket will be automatically deleted.',
+    ],
   ])('accepts ordinary prose: %s', (_label, reply) => {
     expect(checkCustomerReply(reply)).toEqual({ safe: true });
   });
@@ -184,6 +201,24 @@ describe('customer reply guard', () => {
     ['a get-passive deletion', 'Your messages got deleted.'],
     ['a periphrastic future deletion', 'Your messages are going to be deleted.'],
     ['a modal passive deletion', 'Your account would be deleted.'],
+    // Review round 8: the exemption covers the ticket's own deletion only, so a coordinated second
+    // subject is not exempted with it.
+    [
+      'a coordinated account retention subject',
+      'Your ticket and your account will be deleted after 30 days.',
+    ],
+    [
+      'a coordinated file retention subject',
+      'Your ticket and your files will be deleted after 30 days.',
+    ],
+    [
+      'a coordinated data retention subject',
+      'Your ticket and all your data will be deleted after 30 days.',
+    ],
+    [
+      'a coordinated subscription retention subject',
+      'Your ticket and your subscription will be removed after 30 days.',
+    ],
   ])('rejects %s, which is a promise the app cannot keep', (_label, reply) => {
     expect(checkCustomerReply(reply)).toMatchObject({
       safe: false,
