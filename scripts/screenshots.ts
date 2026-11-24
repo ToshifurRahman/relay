@@ -219,18 +219,27 @@ try {
     if (size <= 2 * 1024 * 1024) break;
   }
 
-  // The same ticket on a phone.
+  // The same ticket on a phone. Reduced motion turns off the print-in clip, so the thread, the
+  // customer message and the reply are all in frame instead of clipped to the header; animations
+  // are disabled on the shot as well because a clipped capture is silent and easy to miss.
   const phone = await browser.newContext({
     baseURL: BASE,
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
     isMobile: true,
+    reducedMotion: 'reduce',
     colorScheme: 'dark',
   });
   const phonePage = await phone.newPage();
   await phonePage.goto(`/t/${referenceNumber}`);
   await expect(phonePage.getByText(/^Reply from support/)).toBeVisible();
-  await shot(phonePage, 'mobile-ticket.png');
+  await expect(phonePage.getByRole('heading', { name: 'Office use' })).toBeVisible();
+  await phonePage.evaluate('document.fonts.ready');
+  await phonePage.screenshot({
+    path: path.join(OUT, 'mobile-ticket.png'),
+    animations: 'disabled',
+    fullPage: true,
+  });
   await phone.close();
 
   // The ops console: a mix of finished and needs-attention tickets.

@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 
 import { describe, expect, it } from 'vitest';
 
@@ -17,6 +18,119 @@ const read = (file: string) => readFileSync(file, 'utf8');
 type RootManifest = { license?: string; engines: { node: string } };
 const manifest = (): RootManifest =>
   JSON.parse(read(path.join(ROOT, 'package.json'))) as RootManifest;
+
+type DecodedPng = { width: number; height: number; pixels: Uint8Array; channels: number };
+
+/**
+ * Decodes an 8-bit RGB/RGBA PNG using only Node's zlib, so the screenshot check needs no image
+ * dependency and stays deterministic. Enough of the format for a browser screenshot: IHDR, the
+ * concatenated IDAT stream, and the five scanline filters.
+ */
+function decodePng(file: string): DecodedPng {
+  const buffer = readFileSync(file);
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let bitDepth = 0;
+  let colorType = 0;
+  const idat: Buffer[] = [];
+  while (offset < buffer.length) {
+    const length = buffer.readUInt32BE(offset);
+    const type = buffer.toString('ascii', offset + 4, offset + 8);
+    const data = buffer.subarray(offset + 8, offset + 8 + length);
+    if (type === 'IHDR') {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+    } else if (type === 'IDAT') {
+      idat.push(data);
+    } else if (type === 'IEND') {
+      break;
+    }
+    offset += 12 + length;
+  }
+  if (bitDepth !== 8 || (colorType !== 2 && colorType !== 6)) {
+    throw new Error(`unsupported PNG: bitDepth=${bitDepth} colorType=${colorType}`);
+  }
+  const channels = colorType === 6 ? 4 : 3;
+  const stride = width * channels;
+  const raw = zlib.inflateSync(Buffer.concat(idat));
+  const pixels = new Uint8Array(height * stride);
+  let cursor = 0;
+  for (let y = 0; y < height; y++) {
+    const filter = raw[cursor++];
+    const line = raw.subarray(cursor, cursor + stride);
+    cursor += stride;
+    const rowStart = y * stride;
+    const prevStart = (y - 1) * stride;
+    for (let x = 0; x < stride; x++) {
+      const left = x >= channels ? pixels[rowStart + x - channels] : 0;
+      const up = y > 0 ? pixels[prevStart + x] : 0;
+      const upLeft = y > 0 && x >= channels ? pixels[prevStart + x - channels] : 0;
+      let value = line[x];
+      if (filter === 1) value += left;
+      else if (filter === 2) value += up;
+      else if (filter === 3) value += Math.floor((left + up) / 2);
+      else if (filter === 4) {
+        const p = left + up - upLeft;
+        const pa = Math.abs(p - left);
+        const pb = Math.abs(p - up);
+        const pc = Math.abs(p - upLeft);
+        value += pa <= pb && pa <= pc ? left : pb <= pc ? up : upLeft;
+      }
+      pixels[rowStart + x] = value & 0xff;
+    }
+  }
+  return { width, height, pixels, channels };
+}
+
+/** The page background is the most common pixel colour; anything far from it is content. */
+function modalColor(image: DecodedPng): [number, number, number] {
+  const tally = new Map<string, number>();
+  for (let y = 0; y < image.height; y += 4) {
+    for (let x = 0; x < image.width; x += 4) {
+      const i = (y * image.width + x) * image.channels;
+      const key = `${image.pixels[i]},${image.pixels[i + 1]},${image.pixels[i + 2]}`;
+      tally.set(key, (tally.get(key) ?? 0) + 1);
+    }
+  }
+  const [winner] = [...tally.entries()].sort((a, b) => b[1] - a[1]);
+  const [r, g, b] = winner[0].split(',').map(Number);
+  return [r, g, b];
+}
+
+function isContent(image: DecodedPng, background: [number, number, number], i: number): boolean {
+  return (
+    Math.abs(image.pixels[i] - background[0]) > 10 ||
+    Math.abs(image.pixels[i + 1] - background[1]) > 10 ||
+    Math.abs(image.pixels[i + 2] - background[2]) > 10
+  );
+}
+
+/** Rows from `fromRow` to the bottom that carry more than two pixels of non-background content. */
+function contentRows(image: DecodedPng, fromRow: number): number {
+  const background = modalColor(image);
+  let rows = 0;
+  for (let y = fromRow; y < image.height; y++) {
+    let hits = 0;
+    for (let x = 0; x < image.width && hits <= 2; x++) {
+      if (isContent(image, background, (y * image.width + x) * image.channels)) hits++;
+    }
+    if (hits > 2) rows++;
+  }
+  return rows;
+}
+
+function lastContentRow(image: DecodedPng): number {
+  const background = modalColor(image);
+  for (let y = image.height - 1; y >= 0; y--) {
+    for (let x = 0; x < image.width; x++) {
+      if (isContent(image, background, (y * image.width + x) * image.channels)) return y;
+    }
+  }
+  return -1;
+}
 
 /** Markdown inline links and images, minus anchor-only targets and absolute URLs. */
 function relativeLinks(markdown: string): string[] {
@@ -121,5 +235,29 @@ describe('portfolio: screenshots', () => {
       return !existsSync(file) || statSync(file).size === 0;
     });
     expect(problems).toEqual([]);
+  });
+
+  it('captures the phone screenshot without motion, so the ticket thread is not clipped', () => {
+    const script = read(path.join(ROOT, 'scripts/screenshots.ts'));
+    const phone = script.indexOf('const phone = await browser.newContext(');
+    expect(phone).toBeGreaterThan(-1);
+    const phoneBlock = script.slice(phone, script.indexOf('// The ops console', phone));
+    expect(phoneBlock).toContain("reducedMotion: 'reduce'");
+    expect(phoneBlock).toContain("animations: 'disabled'");
+  });
+
+  it('shows real ticket content in the lower half of mobile-ticket.png', () => {
+    // A capture taken mid print-in animation is clipped to its header: content stops around row
+    // 500 of 1688 and the thread, customer message and reply never reach the file. A capture with
+    // motion off fills the page and carries content to the footer.
+    const image = decodePng(path.join(ROOT, 'docs/screenshots/mobile-ticket.png'));
+    expect(contentRows(image, 0) / image.height).toBeGreaterThanOrEqual(0.7);
+    expect(lastContentRow(image)).toBeGreaterThan(image.height - 100);
+  });
+});
+
+describe('portfolio: ops alert subject', () => {
+  it('does not document the retired [Ticket Pipe] alert subject', () => {
+    expect(read(path.join(ROOT, 'docs/ops.md'))).not.toContain('[Ticket Pipe]');
   });
 });
