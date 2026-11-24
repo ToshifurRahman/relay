@@ -59,16 +59,31 @@ export interface TriagePromptFields {
 export function neutralizeUntrustedText(value: string): string {
   return (
     stripControlChars(String(value ?? ''))
-      // Any HTML-ish tag, including `</ticket_body>` and `<script>`/`</script>`.
-      .replace(/<\/?[a-zA-Z][^<>]*?>/g, '')
+      // Fullwidth angle brackets are tokenizer confusables for `<`; fold them to glyphs so they
+      // cannot be re-read as a delimiter or role marker (defense in depth).
+      .replace(/\uFF1C/g, '\u2039')
+      .replace(/\uFF1E/g, '\u203a')
+      // Our own delimiter tags and the role names a model could treat as a boundary. Only these
+      // names are removed: a generic `<...>` strip would eat a ticket's code, turning
+      // `if (a<b && c>d)` into `if (ad)` and deleting `Array<T>`.
+      .replace(
+        /<\/?(?:ticket[_-]?(?:data|body|subject|description)|system|assistant|user|im_start|im_end|endoftext)\b[^<>]*>/gi,
+        ''
+      )
+      // HTML tags that carry an executable payload.
+      .replace(
+        /<\/?(?:script|iframe|object|embed|style|svg|form|input|link|meta|img)\b[^<>]*>/gi,
+        ''
+      )
       // Chat-template role markers: `<|system|>`, `<|im_start|>`, `<|endoftext|>`.
       .replace(/<\|[^|<>]*\|>/g, '')
       // Llama/Mistral instruction tokens and system wrappers.
       .replace(/\[\/?INST\]/g, '')
       .replace(/<<\/?SYS>>/g, '')
-      // Runs of angle brackets (e.g. a guessed delimiter) collapse to a single harmless glyph.
-      .replace(/<{2,}/g, '\u2039')
-      .replace(/>{2,}/g, '\u203a')
+      // Runs of three or more angle brackets (a guessed or forged delimiter). Two are left alone
+      // so compare/shift operators such as `a<<b` and `c>>d` stay readable.
+      .replace(/<{3,}/g, '\u2039')
+      .replace(/>{3,}/g, '\u203a')
       // A markdown fence cannot open a code block that overrides the schema instructions.
       .replace(/```/g, "'''")
   );

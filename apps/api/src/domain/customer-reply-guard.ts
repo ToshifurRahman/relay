@@ -24,39 +24,54 @@ export type ReplyRejection =
 export type ReplyCheck = { safe: true } | { safe: false; reason: ReplyRejection };
 
 // Phrases that only appear when a model talks about its own instructions rather than the ticket.
+// Bare `system:`/`assistant:` is deliberately absent: "The system: a quick restart clears this" is
+// ordinary support prose. A real role spoof uses a chat-template token, which is still caught.
 const PROMPT_LEAK = [
   /system prompt/i,
   /<\|[^|<>]*\|>/,
   /\[\/?INST\]/,
   /ignore (?:all )?(?:the )?(?:previous|prior|above) instructions/i,
   /\bdeveloper mode\b/i,
-  /\b(?:system|assistant)\s*:/i,
   /you are (?:a|an|now)\b[^.]{0,60}\b(?:assistant|agent|ai|model)\b/i,
 ];
 
-// Names that exist only inside the pipeline, or JSON that carries them.
+// Pipeline field names and the JSON keys that carry them, matched as identifiers or quoted keys.
+// Bare prose must pass: "Here are the next steps" and "contact your provider: Acme" are ordinary
+// support language, while `next_steps`, `nextSteps` and `"provider":` are a dump of internal state.
 const INTERNAL_FIELDS = [
-  /\binternal[_ ]?note\b/i,
-  /\brecommended[_ ]?team\b/i,
-  /\bissue[_ ]?summary\b/i,
-  /\bcustomer[_ ]?reply\b/i,
-  /\bnext[_ ]?steps\b/i,
-  /\breasoning\s*:/i,
-  /\bconfidence\s*:\s*\d/i,
-  /\bprovider\s*:/i,
-  /\bmodel\s*:\s*\S+\/\S+/i,
+  /\binternal_note\b/i,
+  /\binternalNote\b/,
+  /\brecommended_team\b/i,
+  /\brecommendedTeam\b/,
+  /\bissue_summary\b/i,
+  /\bissueSummary\b/,
+  /\bcustomer_reply\b/i,
+  /\bcustomerReply\b/,
+  /\bnext_steps\b/i,
+  /\bnextSteps\b/,
+  /["'](?:reasoning|confidence|provider|model|category|priority|sentiment|escalate)["']\s*:/i,
+  /\bconfidence\s*:\s*(?:0?\.\d+|\d{1,3}\s*%)/i,
 ];
 
 // The AI reply is shown to the customer as the support team's answer, so it must not assert that
-// an irreversible action was already taken: nothing in the pipeline performs refunds, unlocks,
-// cancellations or deletions, and a model that claims one is inventing a commitment the team never
-// made. Forwarding the request ("passed this to billing") is fine; "we have refunded it" is not.
+// an irreversible action was taken or promise one: nothing in the pipeline performs refunds,
+// unlocks, cancellations or deletions, and a model that says so is inventing a commitment the team
+// never made. Forwarding the request ("passed this to billing") is fine.
 const UNAUTHORIZED_PROMISE = [
+  // Past / perfect: the action is presented as already done.
   /\bwe(?:['\u2019]ve| have| had)?\s+(?:now\s+)?(?:refunded|reimbursed|credited|reversed|charged back)\b/i,
   /\bwe(?:['\u2019]ve| have| had)?\s+(?:now\s+)?(?:unlocked|restored|reactivated)\b/i,
   /\bwe(?:['\u2019]ve| have| had)?\s+(?:now\s+)?(?:cancell?ed|terminated|suspended|closed)\s+(?:your|the|this)\b/i,
   /\bwe(?:['\u2019]ve| have| had)?\s+(?:now\s+)?(?:deleted|erased|purged|removed)\s+(?:your|the|this)\b/i,
   /\byour\s+(?:refund|account|subscription|data)\s+(?:has\s+been|is\s+now)\s+(?:processed|issued|completed|cancell?ed|deleted|unlocked|restored)\b/i,
+  // Future / active: the same unauthorised commitment, stated in advance.
+  /\b(?:I|we)(?:['\u2019](?:ll|m|re)| will| am| are)\s+(?:now\s+)?(?:refund|reimburse|credit)\b/i,
+  /\b(?:I|we)(?:['\u2019](?:ll|m|re)| will| am| are)\s+(?:now\s+)?(?:issu\w*|process\w*|send\w*|approv\w*|prepar\w*|releas\w*)\s+(?:a|the|your)\s+(?:full\s+)?(?:refund|credit|reimbursement)\b/i,
+  /\b(?:I|we)(?:['\u2019](?:ll|m|re)| will| am| are)\s+(?:now\s+)?(?:unlock|restore|reactivate)\s+(?:your|the|this)\b/i,
+  /\b(?:I|we)(?:['\u2019](?:ll|m|re)| will| am| are)\s+(?:now\s+)?(?:cancell?|terminate|suspend|close|delete|erase|purge|remove)\s+(?:your|the|this)\s+(?:account|subscription|service|data|order|profile)\b/i,
+  /\byou(?:['\u2019]ll| will)\s+(?:receive|get)\s+(?:a\s+|your\s+)?(?:full\s+)?(?:refund|credit|reimbursement)\b/i,
+  /\byour\s+(?:refund|credit|reimbursement|account|subscription)\s+(?:will|shall)\s+be\s+(?:processed|issued|paid|completed|refunded|credited|unlocked|restored|cancell?ed|deleted|closed)\b/i,
+  /\b(?:will|shall)\s+be\s+(?:refunded|credited|reimbursed|unlocked|restored|cancell?ed|deleted|closed)\b/i,
 ];
 
 const SECRETS = [
@@ -69,13 +84,23 @@ const SECRETS = [
 
 const STACK_TRACE = /\n\s+at\s+\S+\s*\([^)]*:\d+:\d+\)/;
 
+// An event handler only means anything inside a tag, and names are an explicit list so that an
+// ordinary word such as "one = two" is not mistaken for an `on*=` attribute.
+const HTML_EVENT_HANDLER =
+  /<\s*[a-z][a-z0-9]*\b[^<>]*\bon(?:click|dblclick|error|load|mouseover|mouseenter|mousemove|mouseout|focus|blur|submit|change|input|keydown|keyup|keypress|touchstart|touchend|animationstart|transitionend|toggle|pointerover|pointerdown|wheel|scroll|copy|paste|cut|drag|drop)\s*=/i;
+
 const MARKUP = [
   /<\s*script\b/i,
   /<\s*iframe\b/i,
   /<\s*object\b/i,
-  /\bon[a-z]+\s*=\s*["']?[^"'>]*["']?/i,
+  /<\s*embed\b/i,
+  /<\s*svg\b/i,
+  HTML_EVENT_HANDLER,
   /javascript\s*:/i,
   /data:text\/html/i,
+  // A reply is rendered as text, so a markdown link is never a real link: `[label](url)` can only
+  // disguise where it points. Plain URLs stay readable and are allowed.
+  /!?\[[^\]\n]{1,200}\]\(\s*(?:https?:\/\/|\/\/|www\.|\/)[^)\s]*\s*\)/i,
 ];
 
 // A control character in customer-visible text is never legitimate: it hides content from a

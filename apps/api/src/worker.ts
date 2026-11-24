@@ -13,7 +13,6 @@ import {
   type TriageOutput,
 } from './domain/ticket-phases.js';
 import {
-  type DraftFields,
   validateDraftOutput,
   validateProcessingOutput,
   validateTriageOutput,
@@ -351,11 +350,17 @@ async function runPipeline(
       return;
     }
 
-    let draft: DraftFields;
     try {
       await recordTicketEvent(ticket, 'draft.started');
       emitTicketUpdate(ticketId, 'draft.started');
       const output = await ai.draft(ticketId, ticket.subject, ticket.description, triageOutput);
+      // A blank or otherwise incomplete reply is a different condition from an unsafe one: it keeps
+      // `incomplete_output`, the reason ops already triages, and never becomes `unsafe_output`.
+      const validation = validateDraftOutput(output);
+      if (!validation.valid) {
+        await setStageInvalid(ticket, 'draft', validation, receiptHandle);
+        return;
+      }
       // Checked before the row is written: an unsafe reply must never reach the database, the
       // public view or the customer email (story 7.12.8). Only the fixed reason travels on, never
       // the reply itself, which can quote the prompt or internal fields.
@@ -365,7 +370,6 @@ async function runPipeline(
         return;
       }
       await completeDraftOutput(ticketId, output);
-      draft = output;
     } catch (err) {
       const message = (err as Error).message;
       await recordTicketEvent(ticket, 'draft.failed', message);
@@ -377,11 +381,6 @@ async function runPipeline(
       throw err;
     }
 
-    const validation = validateDraftOutput(draft);
-    if (!validation.valid) {
-      await setStageInvalid(ticket, 'draft', validation, receiptHandle);
-      return;
-    }
     await recordTicketEvent(ticket, 'draft.completed');
     emitTicketUpdate(ticketId, 'draft.completed');
     logger.info({ ticketId }, 'Draft complete');

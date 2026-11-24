@@ -135,4 +135,19 @@ describe('customerReply output guard (story 7.12.8)', () => {
     const updated = await getTicketById(ticket.id);
     expect(updated.failureReason).toBeNull();
   });
+
+  // Review round 1 (DS P2-1): a blank reply is merely incomplete, not unsafe. It must keep the
+  // `incomplete_output` reason ops triage already knows, and never reach the guard's `empty` reason.
+  it('treats a blank reply as incomplete output, not an unsafe reply', async () => {
+    const ticket = await runWithReply('   ');
+
+    const updated = await getTicketById(ticket.id);
+    expect(updated.status).toBe('needs_attention');
+    expect(updated.status).not.toBe('completed');
+
+    const details = (await getAllEventsByTicketId(ticket.id)).map((e) => e.detail ?? '').join('\n');
+    expect(details).toContain('Incomplete output');
+    expect(details).not.toContain('Unsafe customer reply');
+    expect((await getProcessingResultByTicketId(ticket.id))!.customerReply).toBeNull();
+  });
 });
