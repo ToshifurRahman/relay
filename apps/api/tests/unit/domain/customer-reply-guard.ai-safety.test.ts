@@ -157,6 +157,33 @@ describe('customer reply guard', () => {
       'a queue deletion and past account compound',
       'Your ticket will be deleted from our queue and your account was deleted after 30 days.',
     ],
+    // Review round 7: the retention tail admits only locative phrases, so a promise clause cannot be
+    // stripped away with the exemption.
+    [
+      'a retention clause plus a refund claim',
+      'Your ticket will be deleted so I refunded the charge after 30 days.',
+    ],
+    [
+      'a retention clause plus a credit claim',
+      'Your ticket will be deleted after I credited the balance in 30 days.',
+    ],
+    [
+      'a retention clause plus an unlock claim',
+      'Your ticket will be deleted as I unlocked it after 30 days.',
+    ],
+    [
+      'a retention clause plus a because-clause claim',
+      'Your ticket will be deleted because I refunded the charge after 30 days.',
+    ],
+    // Review round 7: an adverb between auxiliary and participle, a modal, a periphrastic future and
+    // the get-passive are the same promise.
+    ['a present-perfect deletion with an adverb', 'Your account has already been deleted.'],
+    ['a perfect deletion with a quantity adverb', 'Your messages have all been deleted.'],
+    ['a past deletion with a quantity adverb', 'Your files were all removed.'],
+    ['a perfect deletion with a time adverb', 'Your data has recently been purged.'],
+    ['a get-passive deletion', 'Your messages got deleted.'],
+    ['a periphrastic future deletion', 'Your messages are going to be deleted.'],
+    ['a modal passive deletion', 'Your account would be deleted.'],
   ])('rejects %s, which is a promise the app cannot keep', (_label, reply) => {
     expect(checkCustomerReply(reply)).toMatchObject({
       safe: false,
