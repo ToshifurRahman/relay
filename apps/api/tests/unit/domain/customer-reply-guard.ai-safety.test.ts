@@ -44,6 +44,12 @@ describe('customer reply guard', () => {
       'If the problem persists, contact your provider: Google.',
     ],
     ['an email provider mention', 'Your email provider: OpenAI may be filtering the reset mail.'],
+    // Review round 4: the retention qualifier may lead the sentence as well as follow the verb.
+    ['a leading retention qualifier', 'Per our retention policy, your ticket will be deleted.'],
+    [
+      'a leading retention window',
+      'Under our 30-day retention policy your ticket will be deleted.',
+    ],
   ])('accepts ordinary prose: %s', (_label, reply) => {
     expect(checkCustomerReply(reply)).toEqual({ safe: true });
   });
@@ -94,6 +100,20 @@ describe('customer reply guard', () => {
     ['a data deletion promise', 'The data will be deleted.'],
     ['a file deletion promise', 'All your files will be deleted.'],
     ['an account retention deletion', 'Your account will be deleted after 30 days.'],
+    // Review round 4: the retention exemption covers only its own clause, so a promise attached to
+    // the same sentence still rejects.
+    [
+      'a retention sentence plus an account deletion',
+      'Your ticket and its replies will be deleted after 30 days and your account will be deleted.',
+    ],
+    [
+      'a retention sentence plus a refund promise',
+      'Your ticket and its replies will be deleted after 30 days, and we will refund you.',
+    ],
+    [
+      'a retention sentence plus a refund claim',
+      'Your ticket and its replies will be deleted after 30 days; we have refunded the duplicate charge.',
+    ],
   ])('rejects %s, which is a promise the app cannot keep', (_label, reply) => {
     expect(checkCustomerReply(reply)).toMatchObject({
       safe: false,
@@ -150,6 +170,14 @@ describe('customer reply guard', () => {
     // Review round 3: a gateway name needs a second internal label beside it, which a metadata dump
     // always has and a provider mention never does.
     ['a provider and model dump', 'provider: groq, model: openai/gpt-oss-20b'],
+    // Review round 4: every internal label pairs with `reasoning:` and with a gateway name.
+    [
+      'a category and priority dump around reasoning',
+      'category: billing, reasoning: the customer is a churn risk, priority: high',
+    ],
+    ['a priority and reasoning dump', 'priority: high. reasoning: churn risk'],
+    ['a sentiment and reasoning dump', 'sentiment: negative, reasoning: the customer is angry'],
+    ['a provider and escalate dump', 'provider: groq, escalate: true'],
   ])('rejects %s', (_label, reply) => {
     expect(checkCustomerReply(reply)).toMatchObject({ safe: false, reason: 'internal_fields' });
   });
