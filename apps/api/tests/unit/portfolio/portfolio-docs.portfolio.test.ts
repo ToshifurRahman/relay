@@ -246,10 +246,12 @@ describe('portfolio: screenshots', () => {
     expect(phoneBlock).toContain("animations: 'disabled'");
   });
 
-  it('shows real ticket content in the lower half of mobile-ticket.png', () => {
-    // A capture taken mid print-in animation is clipped to its header: content stops around row
-    // 500 of 1688 and the thread, customer message and reply never reach the file. A capture with
-    // motion off fills the page and carries content to the footer.
+  it('is not a blank capture of mobile-ticket.png', () => {
+    // A capture taken mid print-in animation is clipped to its header: content stops around row 500
+    // of 1688 and the thread, customer message and reply never reach the file. With motion off the
+    // capture fills the page and carries content to the footer. This checks for a header-only blank,
+    // not for the shot covering the page's full scroll height: a viewport-height crop of the current
+    // page also clears both thresholds.
     const image = decodePng(path.join(ROOT, 'docs/screenshots/mobile-ticket.png'));
     expect(contentRows(image, 0) / image.height).toBeGreaterThanOrEqual(0.7);
     expect(lastContentRow(image)).toBeGreaterThan(image.height - 100);

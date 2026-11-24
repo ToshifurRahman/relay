@@ -46,7 +46,13 @@ State toggles (ticket, confirm), the "Demo pages" dock, "Demo: fill an example",
 
 ## Copy kept by decision
 
-Two lines promise a speed the pipeline cannot guarantee. They match the demo word for word. Ruled "keep" on 2026-10-22:
+Nothing in this section is outstanding. Two `/new` lines used to promise a speed the pipeline cannot
+guarantee, and they were ruled "keep" on 2026-10-22 because they matched the demo word for word:
 
 - `/new` lead: "Most replies arrive within a minute."
 - `/new` success panel: "A reply usually arrives within a minute."
+
+Story 7.12.9 (Legal Truthfulness) removed both, because the deployment has no SLA and the promise was
+not true. The `/new` lead is now "How can we help?" and the success panel says the page updates itself
+as the ticket moves. This entry is kept only as a record of the earlier decision; there is no copy
+exception left here.
