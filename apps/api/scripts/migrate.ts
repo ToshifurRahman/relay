@@ -3,11 +3,9 @@ import { join } from 'node:path';
 
 import pg from 'pg';
 
-import { type Config, type RawEnv, scriptConfig } from '../src/lib/config.js';
+import { type RawEnv, scriptConfig } from '../src/lib/config.js';
 
 const { Client } = pg;
-
-export type MigrateConfig = Pick<Config, 'DATABASE_URL' | 'DATABASE_DIRECT_URL'>;
 
 /**
  * Neon recommends the direct endpoint for migrations; the pooled endpoint lacks the

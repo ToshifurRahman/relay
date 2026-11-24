@@ -34,6 +34,11 @@ export default defineConfig({
       // Abuse protection: the e2e suites are not about the limits, so they must never trip them.
       TICKET_IP_HOURLY_LIMIT: '100000',
       TICKET_DAILY_CAP: '100000',
+      // The mail cap counts on `notify:sent:<UTC day>` in the Redis this stack shares with every
+      // other local run, so the 250 default is exhausted after a day of e2e work and the email
+      // tests then get a 502 from the confirmation path. This is a test stack; it must not share
+      // a production-shaped daily budget with whatever else is on the host.
+      MAIL_DAILY_CAP: '100000',
     },
   },
 });
