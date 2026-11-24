@@ -114,6 +114,28 @@ describe('customer reply guard', () => {
       'a retention sentence plus a refund claim',
       'Your ticket and its replies will be deleted after 30 days; we have refunded the duplicate charge.',
     ],
+    // Review round 5: a comma-free compound carries the retention qualifier at the end, so the
+    // exemption must stop at the first deletion verb and leave the second promise to the arms.
+    [
+      'a ticket and account compound whose window trails',
+      'Your ticket will be deleted and your account will be deleted after 30 days.',
+    ],
+    [
+      'a ticket with replies and account compound',
+      'Your ticket and its replies will be deleted and your account will be deleted after 30 days.',
+    ],
+    [
+      'a queue deletion and account compound',
+      'Your ticket will be deleted from our queue and your account will be deleted after 30 days.',
+    ],
+    [
+      'a purge and erase compound',
+      'The ticket will be purged and your data will be erased in 30 days.',
+    ],
+    [
+      'a compound with a trailing policy phrase',
+      'Your ticket will be deleted and your account will be deleted under our retention policy.',
+    ],
   ])('rejects %s, which is a promise the app cannot keep', (_label, reply) => {
     expect(checkCustomerReply(reply)).toMatchObject({
       safe: false,

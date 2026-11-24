@@ -112,12 +112,13 @@ const UNAUTHORIZED_PROMISE = [
 
 // Privacy copy tells a customer that the ticket itself is removed under a retention policy or after
 // a retention window. That is policy, not a commitment to delete an account, a message or a file, so
-// exactly that clause is exempted from the passive deletion arm. The match stops at the qualifier
-// and never crosses a comma, semicolon or full stop, so a promise riding on the same sentence
-// ("... after 30 days, and we will refund you") is still checked by the arms.
+// exactly that clause is exempted from the passive deletion arm. The match stops at the qualifier,
+// never crosses a comma, semicolon or full stop, and the gap before the verb cannot span a second
+// passive deletion, so a comma-free compound ("... will be deleted and your account will be deleted
+// after 30 days") leaves the second promise to the arms.
 const RETENTION_WINDOW = String.raw`\s+(?:after|within|in)\s+\d+\s+(?:days?|weeks?|months?|years?)\b`;
 const RETENTION_POLICY_LABEL = String.raw`(?:per|under|pursuant\s+to|in\s+line\s+with)\s+(?:our|the|its)\s+(?:\d+[-\s]?day\s+)?retention\s+polic(?:y|ies)\b`;
-const RETENTION_SUBJECT = String.raw`\b(?:your|the)\s+ticket\b[^.!?\n,;]{0,80}?\b(?:will|shall)\s+be\s+(?:deleted|removed|erased|purged)\b`;
+const RETENTION_SUBJECT = String.raw`\b(?:your|the)\s+ticket\b(?:(?!\b(?:will|shall)\s+be\s+(?:deleted|removed|erased|purged)\b)[^.!?\n,;]){0,80}?\b(?:will|shall)\s+be\s+(?:deleted|removed|erased|purged)\b`;
 
 const RETENTION_POLICY = new RegExp(
   `${RETENTION_POLICY_LABEL}[,\\s]*${RETENTION_SUBJECT}|${RETENTION_SUBJECT}(?:${RETENTION_WINDOW}|\\s+${RETENTION_POLICY_LABEL})`,
