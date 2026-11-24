@@ -28,11 +28,6 @@ const WINDOW_SECONDS = 86400 + 3600;
 
 const dayKey = (now: Date) => `${KEY_PREFIX}${now.toISOString().slice(0, 10)}`;
 
-/** True when any LLM spend limit is configured, including the 0 kill switch. */
-export function isLlmSpendCapped(): boolean {
-  return getConfig().LLM_DAILY_CAP !== undefined;
-}
-
 /**
  * Counts one LLM call against the UTC day and throws LlmSpendCapReached when the cap is spent.
  * With the cap at 0 the call is refused before Redis is reached: that is the kill switch. The

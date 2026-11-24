@@ -143,6 +143,17 @@ Each stage's output is checked as soon as the stage runs. Unusable output is rec
 ticket before the draft is written. The marker tells a replay which stage to start from. Older
 `needs_attention` tickets without a marker re-run any stage whose saved output is missing or unusable.
 
+A drafted reply also passes the customer-reply output guard before it is saved. When the guard blocks it,
+the ticket goes to `needs_attention` with the reason `unsafe_output` and records `draft.invalid` with the
+detail `Unsafe customer reply blocked: <rule>`, where `<rule>` is a fixed code: `empty`, `too_long`,
+`control_chars`, `prompt_leak`, `internal_fields`, `unauthorized_promise`, `secret`, `stack_trace` or
+`markup`. Nothing is stored or sent: the blocked reply is not written to the ticket, so no customer sees
+it and no unsafe text enters the database. Treat it like any other `draft.invalid`: read the reason on the
+ticket, then replay it with `POST /api/tickets/:id/replay`. The replay re-runs only the draft (the triage
+output is reused), so a fixed or model-different retry gets a fresh chance. If the same ticket keeps
+returning `unsafe_output`, leave it in `needs_attention` and handle the customer by hand rather than
+replaying it repeatedly, since the guard is doing its job.
+
 The worker skips a stage based on its **saved output**, not the event history. If a worker crashes after
 saving a stage's output but before recording `*.completed`, the next attempt reuses that output and
 records `*.completed` with the detail `reused stored output`. If the history says a stage completed but
@@ -246,6 +257,7 @@ step.
 | `DATABASE_DIRECT_URL` **secret**                                      | Neon (direct)                         | next deploy's `start.sh` logs `nothing to migrate` and the server starts                                                                                                | put the old string back                                                   |
 | `REDIS_URL` **secret**                                                | Redis Cloud                           | sign in at `/ops` returns `200`; `GET /api/ops/session` returns `200`                                                                                                   | put the old string back and redeploy                                      |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` **secret**              | AWS IAM (runtime user)                | `bun --filter @relay/api smoke:infra` prints `sqs-round-trip ok`; one ticket processes end to end                                                                       | put the old pair back; the old key stays valid until you delete it in IAM |
+| `SQS_ENDPOINT`                                                        | unset in production                   | with the value changed, submit one ticket and watch it reach `completed` (the worker polls the new endpoint); `bun --filter @relay/api smoke:infra` passes              | put the old value back and redeploy                                       |
 | `PORTKEY_API_KEY` **secret**                                          | Portkey                               | submit one ticket; `GET /api/ops/ai-interactions` shows a `success` row                                                                                                 | put the old key back                                                      |
 | `GOOGLE_API_KEY` **secret**                                           | Google (Gemini, via Portkey)          | same as Portkey, with `PRIMARY_GATEWAY=google`                                                                                                                          | put the old key back                                                      |
 | `GROQ_API_KEY` / `BACKUP_API_KEY` **secret**                          | Groq                                  | same, with `PRIMARY_GATEWAY=groq` or `BACKUP_GATEWAY` set                                                                                                               | put the old key back                                                      |
@@ -257,11 +269,11 @@ step.
 | `PUBLIC_SITE_URL`                                                     | this site                             | an email link opens the deployed origin, and the ops socket handshake is accepted                                                                                       | put the old value back                                                    |
 | `VITE_TURNSTILE_SITE_KEY`, `VITE_CF_ANALYTICS_TOKEN`, `VITE_SITE_URL` | web build args                        | **not rotatable by a variable change**: they are baked into the bundle at build time, so change them and trigger a new deploy (a Render "Clear build cache and deploy") | rebuild with the old value                                                |
 
-The non-secret settings (`PORT`, `SQS_QUEUE_NAME`, `SQS_DLQ_NAME`, `WORKER_CONCURRENCY`, `AWS_REGION`,
-`PRIMARY_GATEWAY`, `PRIMARY_MODEL`, `BACKUP_GATEWAY`, `BACKUP_MODEL`, `AI_TIMEOUT_MS`, `LLM_DAILY_CAP`,
-`LLM_MODE`, `LLM_FAKE_DELAY_MS`, `SNS_ENDPOINT`, `SNS_ALERT_MAX_PER_HOUR`, `MAIL_DRIVER`, `MAIL_FROM`,
-`MAIL_FROM_NAME`, `MAIL_DAILY_CAP`, `TICKET_IP_HOURLY_LIMIT`, `TICKET_DAILY_CAP`, `NODE_ENV`) rotate the
-same way, with the per-setting check being the behaviour it controls.
+The non-secret settings (`PORT`, `SQS_QUEUE_NAME`, `SQS_DLQ_NAME`, `SQS_ENDPOINT`, `WORKER_CONCURRENCY`,
+`AWS_REGION`, `PRIMARY_GATEWAY`, `PRIMARY_MODEL`, `BACKUP_GATEWAY`, `BACKUP_MODEL`, `AI_TIMEOUT_MS`,
+`LLM_DAILY_CAP`, `LLM_MODE`, `LLM_FAKE_DELAY_MS`, `SNS_ENDPOINT`, `SNS_ALERT_MAX_PER_HOUR`, `MAIL_DRIVER`,
+`MAIL_FROM`, `MAIL_FROM_NAME`, `MAIL_DAILY_CAP`, `TICKET_IP_HOURLY_LIMIT`, `TICKET_DAILY_CAP`, `NODE_ENV`)
+rotate the same way, with the per-setting check being the behaviour it controls.
 
 ### `OPS_TOKEN`: zero-downtime rotation
 
@@ -328,8 +340,11 @@ Then choose the path:
   aws sqs list-message-move-tasks --source-arn "$DLQ_ARN"   # Status: RUNNING -> COMPLETED
   ```
 
-  This needs `sqs:StartMessageMoveTask` on the runtime identity (`docs/production-infra.md`). If it is
-  not granted, use the fallback.
+  This needs `sqs:StartMessageMoveTask` on the runtime identity, and that action is **not** in
+  `infra/iam/runtime-policy.json` (which grants only `GetQueueUrl`, `SendMessage`, `ReceiveMessage` and
+  `DeleteMessage`), so the one-call move is `AccessDenied` until an operator adds the action to that
+  policy and redeploys. A hand-managed account can add it; on the current policy the fallback below is
+  the expected production path. Use the fallback whenever the grant is not there.
 
 - **Fallback, no extra permission: receive + send + delete, one message at a time.** Do this only
   after inspecting the body, and never while `ApproximateNumberOfMessagesNotVisible` is above 0 (a
@@ -455,23 +470,41 @@ it is not part of the default `up`, so adding it never recreates the other servi
 | Visibility timeout, DLQ, redrive policy | set by `setup-infra.ts`   | the same, applied by the same script                                 |
 | The app's queue code                    | unchanged                 | unchanged                                                            |
 
-**Local proof (verified):**
+**Local proof (executed, `reports/logs/ops-elasticmq-dryrun.log`).** The three steps below were run
+against the repository's own `elasticmq` compose profile on 2026-11-24 and the container was stopped and
+removed afterwards; the log holds the full output.
 
 ```sh
 docker compose --profile elasticmq up -d elasticmq
 SQS_ENDPOINT=http://localhost:9324 SNS_ENDPOINT= bun --env-file=.env apps/api/scripts/setup-infra.ts
-# one send, receive and delete through the app's own module, with the same overrides
-docker compose --profile elasticmq stop elasticmq
+# one send, receive and delete through the app's own queue module, with the same overrides
+docker compose --profile elasticmq stop elasticmq && docker compose --profile elasticmq rm -f elasticmq
 ```
 
-**Caveats versus AWS SQS**, all observed in the local proof:
+What the run showed, quoting the log:
 
-- **No SNS**, so ops email alerts stop. The live feed and ticket processing are unaffected; alerts are
-  best-effort and never block a ticket (`services/ops-alerts.ts`).
+- `setup-infra.ts` created the pair and applied the policy: `DLQ ARN: arn:aws:sqs:elasticmq:000000000000:<queue>-dlq`,
+  `redrive policy applied (visibility timeout 300s for AI_TIMEOUT_MS 30000)`, and
+  `SNS_ENDPOINT not set, skipping the ops alert topic`.
+- Read back through the app's queue module, the main queue reported
+  `VisibilityTimeout=300 maxReceiveCount=10 deadLetterTarget=<queue>-dlq`, so the same script and the same
+  SDK calls set the same attributes as against AWS.
+- The round trip passed: `sent ticket OPS-ELASTICMQ-1`, `received ticketId=… reference=OPS-ELASTICMQ-1
+attempt=1`, `deleted the message`, `queue empty after delete: true`, exit `0`.
+- Teardown removed the container: `elasticmq containers left in this compose project (any state): 0`.
+
+No code change was needed for the switch: the only difference between the two runs was the endpoint.
+
+**Caveats versus AWS SQS.** The first was observed in the local proof; the rest are properties of
+ElasticMQ itself and are recorded here so a switch is not planned on the assumption they match AWS:
+
+- **No SNS**, so ops email alerts stop. Observed: the setup run printed `SNS_ENDPOINT not set, skipping
+the ops alert topic`. The live feed and ticket processing are unaffected; alerts are best-effort and
+  never block a ticket (`services/ops-alerts.ts`).
 - **Redrive timing differs.** AWS moves a message to the DLQ on a timer once `maxReceiveCount` is
-  exceeded; ElasticMQ and LocalStack move it on the receive that exceeds the count. The worker's own
-  `MAX_RECEIVES` cap still fires first, so a ticket still fails cleanly; only the exact moment the
-  message leaves the main queue differs.
+  exceeded; ElasticMQ and LocalStack move it on the receive that exceeds the count (the same behaviour
+  the LocalStack DLQ dry run recorded). The worker's own `MAX_RECEIVES` cap still fires first, so a
+  ticket still fails cleanly; only the exact moment the message leaves the main queue differs.
 - **`start-message-move-task` is an AWS feature.** Draining the DLQ on ElasticMQ uses the receive + send
   - delete fallback above, not the one-call move task.
 - **No managed multi-AZ or durability guarantees.** ElasticMQ is a single process; run it as a real

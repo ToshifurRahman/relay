@@ -16,11 +16,16 @@ import {
   type TriageOutput,
 } from './llm-client.js';
 import { logger } from './logger.js';
-import { assertLlmSpendAllowed } from './spend-guard.js';
+import { assertLlmSpendAllowed, LlmSpendCapReached } from './spend-guard.js';
 
 type TriageResult = Omit<ProcessingResult, 'customerReply' | 'internalNote' | 'nextSteps'>;
 type DraftResult = { customerReply: string; internalNote: string; nextSteps: string[] };
 type AiInteractionRecorder = (record: AiInteractionRecord) => Promise<void>;
+
+// A log-only label: a spend refusal is not a provider outcome, so it is never recorded in
+// `ai_interactions` (its `outcome` CHECK constraint has no such value) but an operator reading
+// logs during a kill-switch incident must see why the call was skipped, not `network_error`.
+type LogOutcome = LlmOutcome | 'spend_cap_reached';
 
 export class AIService {
   constructor(private readonly recorder: AiInteractionRecorder = insertAiInteraction) {}
@@ -113,6 +118,8 @@ export class AIService {
       );
       return mapTriageOutput(output);
     } catch (primaryError) {
+      // A spend refusal would refuse the backup too, so it is reported once and rethrown here.
+      if (isSpendRefusal(ticketId, 'triage', primaryError)) throw primaryError;
       if (!isBackupConfigured()) {
         logger.warn(
           { ticketId, operation: 'triage', outcome: errorOutcome(primaryError) },
@@ -170,6 +177,8 @@ export class AIService {
       );
       return mapDraftOutput(output);
     } catch (primaryError) {
+      // A spend refusal would refuse the backup too, so it is reported once and rethrown here.
+      if (isSpendRefusal(ticketId, 'draft', primaryError)) throw primaryError;
       if (!isBackupConfigured()) {
         logger.warn(
           { ticketId, operation: 'draft', outcome: errorOutcome(primaryError) },
@@ -211,8 +220,27 @@ function errorName(err: unknown): string {
   return typeof name === 'string' && name ? name : 'Error';
 }
 
-function errorOutcome(err: unknown): LlmOutcome {
+/**
+ * A fixed code for the log: never an error's own message, which can quote untrusted text. A spend
+ * refusal gets its own label so a kill-switch incident is visible in the logs for what it is.
+ */
+function errorOutcome(err: unknown): LogOutcome {
+  if (err instanceof LlmSpendCapReached) return 'spend_cap_reached';
   return err instanceof LlmCallError ? err.outcome : 'network_error';
+}
+
+/**
+ * A spend refusal refuses the backup exactly as it refused the primary, because the guard reads one
+ * global cap, so the fallback is skipped: trying it would spend a second Redis increment to reach
+ * the same answer and log a misleading "trying backup". Returns true when this error was one.
+ */
+function isSpendRefusal(ticketId: string, operation: AiOperation, err: unknown): boolean {
+  if (!(err instanceof LlmSpendCapReached)) return false;
+  logger.warn(
+    { ticketId, operation, outcome: 'spend_cap_reached' },
+    'AI call skipped: LLM spend is capped, so the backup is not tried'
+  );
+  return true;
 }
 
 function mapTriageOutput(triageOutput: TriageOutput): TriageResult {
