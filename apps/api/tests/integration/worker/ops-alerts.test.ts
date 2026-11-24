@@ -115,7 +115,7 @@ describe('processMessage — ops email alert', () => {
 
     expect(published()).toHaveLength(1);
     const [input] = published();
-    expect(input.Subject).toBe(`[Ticket Pipe] TICK-ALERT-W01 needs attention (incomplete_output)`);
+    expect(input.Subject).toBe(`[Relay] TICK-ALERT-W01 needs attention (incomplete_output)`);
     expect(input.Message).toContain(`Ticket ID: ${ticket.id}`);
     const sent = JSON.stringify(input);
     for (const sentinel of [SUBJECT, DESCRIPTION, AI_OUTPUT, ERROR_TEXT]) {

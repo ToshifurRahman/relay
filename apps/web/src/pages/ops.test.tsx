@@ -178,7 +178,7 @@ describe('the ticket table', () => {
     expect(rows[0]).toHaveTextContent('Account access');
     expect(rows[0]).toHaveTextContent('High');
     expect(rows[0]).toHaveTextContent('Needs attention');
-    // Not triaged yet: dashes, and the real status rather than "With our team".
+    // Not triaged yet: dashes, and the real status rather than the customer-facing pill.
     expect(rows[1]).toHaveTextContent('Processing');
     expect(rows[1].textContent?.match(/Not yet/g)).toHaveLength(2);
 

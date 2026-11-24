@@ -3,13 +3,14 @@ import type { TicketStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 // Customers see three states. Failures and tickets awaiting review share one neutral label:
-// the public view never says a ticket failed.
+// the public view never says a ticket failed, and it names the console rather than a support
+// team the demo does not have.
 const PILLS: Record<TicketStatus, { label: string; tone: string }> = {
   queued: { label: 'Processing', tone: 'text-primary' },
   processing: { label: 'Processing', tone: 'text-primary' },
   completed: { label: 'Replied', tone: 'text-success' },
-  failed: { label: 'With our team', tone: 'text-muted-foreground' },
-  needs_attention: { label: 'With our team', tone: 'text-muted-foreground' },
+  failed: { label: 'Needs review', tone: 'text-muted-foreground' },
+  needs_attention: { label: 'Needs review', tone: 'text-muted-foreground' },
 };
 
 // A small stamp: outline in the status colour, set at the shared tilt.

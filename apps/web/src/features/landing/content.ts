@@ -30,16 +30,20 @@ export const FEATURES: Feature[] = [
   {
     n: '03',
     label: 'Drafted',
-    body: 'A reply is written for your question, with notes the team keeps to themselves.',
+    body: 'A reply is written for your question, with notes kept back from your page.',
   },
   {
     n: '04',
     label: 'Replied',
-    body: "The answer lands in the same thread. Anything the AI can't answer confidently is put on hold and flagged for the team.",
+    body: "The answer lands in the same thread. Anything the AI can't answer confidently is put on hold and flagged on the ops console.",
   },
 ];
 
-export const PRICING_HEADING = { label: 'Section B', title: 'Rates' };
+export const PRICING_HEADING = {
+  label: 'Section B',
+  title: 'Rates',
+  note: 'Illustrative rates from a demo build. These are not real plans: there is nothing to buy, no checkout and no billing.',
+};
 
 export const TIERS: Tier[] = [
   {
@@ -47,7 +51,7 @@ export const TIERS: Tier[] = [
     blurb: 'For a single inbox',
     price: 'Free',
     features: ['Triage on every ticket', 'Drafted replies', 'Live tracking page'],
-    cta: 'Start free',
+    cta: 'Try the demo',
   },
   {
     name: 'Team',
@@ -59,7 +63,7 @@ export const TIERS: Tier[] = [
       'Ops console with replay',
       'Alerts for tickets needing attention',
     ],
-    cta: 'Start with Team',
+    cta: 'Try the demo',
     featured: true,
   },
   {
@@ -67,7 +71,7 @@ export const TIERS: Tier[] = [
     blurb: 'For high-volume teams',
     price: 'Custom',
     features: ['Everything in Team', 'AI performance reporting', 'Full ticket history and audit'],
-    cta: 'Ask us',
+    cta: 'Try the demo',
   },
 ];
 
@@ -76,7 +80,7 @@ export const FAQ_HEADING = { label: 'Section C', title: 'Questions' };
 export const FAQS: Faq[] = [
   {
     q: 'Does a person ever see my ticket?',
-    a: "The team can see every ticket, and anything the AI can't answer confidently is put on hold and flagged for the team. The ticket page updates if it moves.",
+    a: "Anyone signed in to the ops console can see every ticket, and anything the AI can't answer confidently is put on hold and flagged there. In this demo only the owner of the deployment has that console. The ticket page updates if it moves.",
   },
   {
     q: 'How do I find my ticket again?',
@@ -84,14 +88,14 @@ export const FAQS: Faq[] = [
   },
   {
     q: 'What happens if something goes wrong?',
-    a: "Your ticket stays on file. It's marked On hold and flagged for the team, and the page updates if it moves again.",
+    a: "Your ticket stays on file. It's marked On hold and flagged on the ops console, and the page updates if it moves again.",
   },
   {
     q: 'Is my message kept private?',
-    a: 'Only you (with the reference) and the support team can see the thread. Internal notes never appear on your page.',
+    a: "Anyone with the ticket's reference can open the thread, and the operator of the demo can see it in the ops console. Internal notes never appear on your page.",
   },
   {
     q: 'Can I get the answer by email?',
-    a: "Yes. Once your ticket is filed, add your email on the ticket page and we'll send the reply there too, after you confirm the address.",
+    a: "Yes. Once your ticket is filed, add your email on the ticket page and we'll email you when the reply is ready, after you confirm the address. The email is a notice with a link; it never carries the reply itself.",
   },
 ];
