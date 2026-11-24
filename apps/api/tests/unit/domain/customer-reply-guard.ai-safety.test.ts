@@ -50,6 +50,10 @@ describe('customer reply guard', () => {
       'a leading retention window',
       'Under our 30-day retention policy your ticket will be deleted.',
     ],
+    // Review round 6: a location phrase may sit between the verb and the retention window.
+    ['a queue retention window', 'Your ticket will be deleted from our queue after 30 days.'],
+    ['a system retention window', 'Your ticket will be deleted from the system within 7 days.'],
+    ['an archive retention window', 'Your ticket will be deleted from our archive in 90 days.'],
   ])('accepts ordinary prose: %s', (_label, reply) => {
     expect(checkCustomerReply(reply)).toEqual({ safe: true });
   });
@@ -135,6 +139,23 @@ describe('customer reply guard', () => {
     [
       'a compound with a trailing policy phrase',
       'Your ticket will be deleted and your account will be deleted under our retention policy.',
+    ],
+    // Review round 6: a passive deletion of any object rejects in the completed and present forms,
+    // and the retention tail must not swallow a second clause.
+    ['a present-perfect message deletion', 'Your messages have been deleted.'],
+    ['a present-perfect history deletion', 'Your history has been deleted.'],
+    ['a simple-past file removal', 'Your files were removed.'],
+    ['a simple-past data erasure', 'Your data was erased.'],
+    ['a present-perfect attachment purge', 'Your attachments have been purged.'],
+    ['a present-passive account deletion', 'Your account is deleted.'],
+    ['a progressive-passive account deletion', 'Your account is being deleted.'],
+    [
+      'a queue deletion and refund compound',
+      'Your ticket will be deleted from our queue and we will refund you after 30 days.',
+    ],
+    [
+      'a queue deletion and past account compound',
+      'Your ticket will be deleted from our queue and your account was deleted after 30 days.',
     ],
   ])('rejects %s, which is a promise the app cannot keep', (_label, reply) => {
     expect(checkCustomerReply(reply)).toMatchObject({

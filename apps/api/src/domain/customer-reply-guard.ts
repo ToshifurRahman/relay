@@ -84,6 +84,13 @@ const INTERNAL_FIELDS = [
 // promise into forwarding work, so those forms are excluded.
 const REQUEST_NOUN = '(?!\\s+(?:request|inquiry|enquiry|ticket|case)\\b)';
 
+// A passive deletion is a promise whichever object it names and whichever tense it states: future
+// "will be deleted", present-perfect "has been deleted", past "were removed", progressive "is being
+// purged". The one exception is the retention statement about the ticket's own lifecycle, which
+// RETENTION_POLICY removes before the arms run.
+const DELETION_VERB = String.raw`(?:deleted|removed|erased|purged)`;
+const PASSIVE_DELETION = String.raw`\b(?:(?:will|shall)\s+be|(?:has|have|had)\s+been|(?:is|are|was|were)(?:\s+being)?)\s+${DELETION_VERB}\b`;
+
 const UNAUTHORIZED_PROMISE = [
   // Past / perfect: the action is presented as already done.
   /\b(?:I|we)(?:['\u2019]ve| have| had)?\s+(?:now\s+)?(?:refunded|reimbursed|credited|reversed|charged back)\b/i,
@@ -106,22 +113,24 @@ const UNAUTHORIZED_PROMISE = [
   /\byour\s+(?:refund|credit|reimbursement|account|subscription)\s+(?:will|shall)\s+be\s+(?:processed|issued|paid|completed|refunded|credited|unlocked|restored|cancell?ed|deleted|closed)\b/i,
   // A passive deletion is a promise whichever object it names. The one exception is the retention
   // statement about the ticket's own lifecycle, which RETENTION_POLICY removes before this runs.
-  /\b(?:will|shall)\s+be\s+(?:deleted|removed|erased|purged)\b/i,
+  new RegExp(PASSIVE_DELETION, 'i'),
   /\b(?:will|shall)\s+be\s+(?:refunded|credited|reimbursed|unlocked|restored|cancell?ed|closed)\b/i,
 ];
 
 // Privacy copy tells a customer that the ticket itself is removed under a retention policy or after
 // a retention window. That is policy, not a commitment to delete an account, a message or a file, so
 // exactly that clause is exempted from the passive deletion arm. The match stops at the qualifier,
-// never crosses a comma, semicolon or full stop, and the gap before the verb cannot span a second
-// passive deletion, so a comma-free compound ("... will be deleted and your account will be deleted
-// after 30 days") leaves the second promise to the arms.
+// never crosses a comma, semicolon or full stop, the gap before the verb cannot span a second
+// passive deletion, and the tail before the qualifier cannot span a second clause, so a comma-free
+// compound ("... will be deleted and your account will be deleted after 30 days") leaves the second
+// promise to the arms.
 const RETENTION_WINDOW = String.raw`\s+(?:after|within|in)\s+\d+\s+(?:days?|weeks?|months?|years?)\b`;
 const RETENTION_POLICY_LABEL = String.raw`(?:per|under|pursuant\s+to|in\s+line\s+with)\s+(?:our|the|its)\s+(?:\d+[-\s]?day\s+)?retention\s+polic(?:y|ies)\b`;
-const RETENTION_SUBJECT = String.raw`\b(?:your|the)\s+ticket\b(?:(?!\b(?:will|shall)\s+be\s+(?:deleted|removed|erased|purged)\b)[^.!?\n,;]){0,80}?\b(?:will|shall)\s+be\s+(?:deleted|removed|erased|purged)\b`;
+const RETENTION_TAIL = String.raw`(?:(?!\b(?:and|but|or|while|we|you|your|refund|credit|reimburse|unlock|restore|upgrade|downgrade|cancel|waive|guarantee|compensat|discount|reset|will|shall|has|have|had|was|were|is|are|deleted|removed|erased|purged)\b)[^.!?\n,;]){0,40}?`;
+const RETENTION_SUBJECT = String.raw`\b(?:your|the)\s+ticket\b(?:(?!${PASSIVE_DELETION})[^.!?\n,;]){0,80}?\b(?:will|shall)\s+be\s+${DELETION_VERB}\b`;
 
 const RETENTION_POLICY = new RegExp(
-  `${RETENTION_POLICY_LABEL}[,\\s]*${RETENTION_SUBJECT}|${RETENTION_SUBJECT}(?:${RETENTION_WINDOW}|\\s+${RETENTION_POLICY_LABEL})`,
+  `${RETENTION_POLICY_LABEL}[,\\s]*${RETENTION_SUBJECT}|${RETENTION_SUBJECT}${RETENTION_TAIL}(?:${RETENTION_WINDOW}|\\s+${RETENTION_POLICY_LABEL})`,
   'gi'
 );
 
