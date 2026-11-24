@@ -36,6 +36,14 @@ describe('customer reply guard', () => {
     ['a prepared refund request', 'I will prepare your refund request for billing.'],
     // A retention statement about the ticket's own lifecycle is policy copy, not a promise.
     ['a retention statement', 'Your ticket and its replies will be deleted after 30 days.'],
+    // Review round 3: the word "reasoning" and a real company name are ordinary support prose.
+    ['a prose reasoning mention', 'I understand your reasoning: the charge looked wrong.'],
+    ['a thanks for reasoning', 'Thanks for the reasoning: it helps us investigate.'],
+    [
+      'a provider mention with a real company',
+      'If the problem persists, contact your provider: Google.',
+    ],
+    ['an email provider mention', 'Your email provider: OpenAI may be filtering the reset mail.'],
   ])('accepts ordinary prose: %s', (_label, reply) => {
     expect(checkCustomerReply(reply)).toEqual({ safe: true });
   });
@@ -79,6 +87,13 @@ describe('customer reply guard', () => {
     ['a future unlock', 'We will unlock your account once verification completes.'],
     ['a future deletion', 'We will delete your data on request.'],
     ['a passive future refund', 'Your refund will be processed within 3 to 5 days.'],
+    // Review round 3: a passive deletion is a promise whichever object it names. Only a
+    // ticket-scoped retention statement is exempt, so an account promise with a window still fails.
+    ['a message deletion promise', 'Your messages will be deleted tomorrow.'],
+    ['a history deletion promise', 'Your history will be deleted.'],
+    ['a data deletion promise', 'The data will be deleted.'],
+    ['a file deletion promise', 'All your files will be deleted.'],
+    ['an account retention deletion', 'Your account will be deleted after 30 days.'],
   ])('rejects %s, which is a promise the app cannot keep', (_label, reply) => {
     expect(checkCustomerReply(reply)).toMatchObject({
       safe: false,
@@ -132,6 +147,9 @@ describe('customer reply guard', () => {
     ],
     ['a prose reasoning label', 'reasoning: the customer is a churn risk'],
     ['a prose model id', 'model: gpt-4o-mini'],
+    // Review round 3: a gateway name needs a second internal label beside it, which a metadata dump
+    // always has and a provider mention never does.
+    ['a provider and model dump', 'provider: groq, model: openai/gpt-oss-20b'],
   ])('rejects %s', (_label, reply) => {
     expect(checkCustomerReply(reply)).toMatchObject({ safe: false, reason: 'internal_fields' });
   });

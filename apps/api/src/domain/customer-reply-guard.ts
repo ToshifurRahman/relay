@@ -51,11 +51,17 @@ const INTERNAL_FIELDS = [
   /\bnextSteps\b/,
   /["'](?:reasoning|confidence|provider|model|category|priority|sentiment|escalate)["']\s*:/i,
   /\bconfidence\s*:\s*(?:0?\.\d+|\d{1,3}\s*%)/i,
-  // Prose labels still mean a dump. They are value-scoped so ordinary sentences stay safe:
-  // "contact your provider: Acme" names no gateway and no model id, so it passes.
-  /\breasoning\s*:/i,
+  // Prose labels still mean a dump, but only when they cannot be ordinary prose. `reasoning:` is a
+  // label at the start of a line or beside another internal label; "I understand your reasoning:…"
+  // is a sentence and stays safe.
+  /(?:^|\n)\s*reasoning\s*:/i,
+  /\breasoning\s*:[^\n]{0,80}\b(?:confidence|model|provider)\s*:/i,
+  /\b(?:confidence|model|provider)\s*:[^\n]{0,80}\breasoning\s*:/i,
   /\bmodel\s*:\s*(?:[a-z0-9._-]+\/[a-z0-9._-]+|(?:gpt|gemini|claude|deepseek|llama)-[a-z0-9._-]+)/i,
-  /\bprovider\s*:\s*(?:groq|openai|google|anthropic|portkey|openrouter|cerebras|together|mistral|cohere)\b/i,
+  // A real company name is ordinary support prose ("contact your provider: Google"), so a gateway
+  // name counts only beside a second internal label, which a metadata dump always has.
+  /\bprovider\s*:\s*(?:groq|openai|google|anthropic|portkey|openrouter|cerebras|together|mistral|cohere)\b[^\n]{0,80}\b(?:model|reasoning|confidence|category|priority|sentiment)\s*:/i,
+  /\b(?:model|reasoning|confidence|category|priority|sentiment)\s*:[^\n]{0,80}\bprovider\s*:\s*(?:groq|openai|google|anthropic|portkey|openrouter|cerebras|together|mistral|cohere)\b/i,
 ];
 
 // The AI reply is shown to the customer as the support team's answer, so it must not assert that
@@ -87,12 +93,17 @@ const UNAUTHORIZED_PROMISE = [
     'i'
   ),
   /\byour\s+(?:refund|credit|reimbursement|account|subscription)\s+(?:will|shall)\s+be\s+(?:processed|issued|paid|completed|refunded|credited|unlocked|restored|cancell?ed|deleted|closed)\b/i,
-  // A passive sentence about the ticket's own lifecycle is retention policy, not a commitment to
-  // delete the customer's account or data, so only an account/data object counts, and a retention
-  // qualifier ("after 30 days", "our retention policy") keeps it safe.
-  /\byour\s+(?:account|data|profile|subscription)\s+(?:will|shall)\s+be\s+(?:deleted|removed|erased|purged)\b(?!\s+(?:after|within|in)\s+\d+\s+(?:days?|weeks?|months?|years?))(?![^.]{0,60}\bretention\b)/i,
+  // A passive deletion is a promise whichever object it names. The one exception is the retention
+  // statement about the ticket's own lifecycle, which RETENTION_POLICY removes before this runs.
+  /\b(?:will|shall)\s+be\s+(?:deleted|removed|erased|purged)\b/i,
   /\b(?:will|shall)\s+be\s+(?:refunded|credited|reimbursed|unlocked|restored|cancell?ed|closed)\b/i,
 ];
+
+// Privacy copy tells a customer that the ticket itself is removed after a retention window. That is
+// policy, not a commitment to delete an account, a message or a file, so exactly this ticket-scoped
+// sentence is exempted from the passive deletion arm, and only when it carries a retention window.
+const RETENTION_POLICY =
+  /\b(?:your|the)\s+ticket\b[^.!?\n]{0,80}\b(?:will|shall)\s+be\s+(?:deleted|removed|erased|purged)\b[^.!?\n]{0,80}\b(?:(?:after|within|in)\s+\d+\s+(?:days?|weeks?|months?|years?)|retention)\b[^.!?\n]*[.!?]?/gi;
 
 const SECRETS = [
   /\bsk-[A-Za-z0-9]{16,}\b/,
@@ -142,7 +153,7 @@ export function checkCustomerReply(reply: string): ReplyCheck {
   if (PROMPT_LEAK.some((re) => re.test(reply))) return { safe: false, reason: 'prompt_leak' };
   if (INTERNAL_FIELDS.some((re) => re.test(reply)))
     return { safe: false, reason: 'internal_fields' };
-  if (UNAUTHORIZED_PROMISE.some((re) => re.test(reply)))
+  if (UNAUTHORIZED_PROMISE.some((re) => re.test(reply.replace(RETENTION_POLICY, ' '))))
     return { safe: false, reason: 'unauthorized_promise' };
   if (SECRETS.some((re) => re.test(reply))) return { safe: false, reason: 'secret' };
   if (STACK_TRACE.test(reply)) return { safe: false, reason: 'stack_trace' };
