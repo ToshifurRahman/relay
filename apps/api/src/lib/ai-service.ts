@@ -16,6 +16,7 @@ import {
   type TriageOutput,
 } from './llm-client.js';
 import { logger } from './logger.js';
+import { assertLlmSpendAllowed } from './spend-guard.js';
 
 type TriageResult = Omit<ProcessingResult, 'customerReply' | 'internalNote' | 'nextSteps'>;
 type DraftResult = { customerReply: string; internalNote: string; nextSteps: string[] };
@@ -45,6 +46,11 @@ export class AIService {
       usage: { promptTokens: number | null; completionTokens: number | null };
     }>
   ): Promise<T> {
+    // Story 7.12.7: the spend guard runs immediately before every provider call, primary or
+    // backup, so a cap reached mid-ticket stops here rather than at the next ticket. It sits
+    // outside the try below on purpose: a refusal is not a provider outcome, so it records no
+    // AI interaction and is never reported as a network error. The call itself is never made.
+    await assertLlmSpendAllowed();
     const start = performance.now();
     try {
       const { output, usage } = await call();

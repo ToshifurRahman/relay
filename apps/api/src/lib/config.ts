@@ -54,6 +54,10 @@ const fields = z.object({
   BACKUP_API_KEY: optional(),
   BACKUP_MODEL: optional(),
   AI_TIMEOUT_MS: integer(1).default(30000),
+  // The LLM spend kill switch and daily ceiling (story 7.12.7). Unset means no ceiling; 0 refuses
+  // every call (the kill switch); a positive value caps the UTC day. A reached cap refuses the
+  // call before the provider request is made. Unset stays undefined, so 0 is never a silent default.
+  LLM_DAILY_CAP: integer(0).optional(),
   // Kept as a raw string so the typo message below can quote it.
   LLM_MODE: optional(),
   LLM_FAKE_DELAY_MS: integer(0).default(1500),

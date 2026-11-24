@@ -84,6 +84,7 @@ it('keeps only infrastructure clients in lib/', () => {
       'counters.ts',
       'db.ts',
       'llm-client.ts',
+      'spend-guard.ts',
       'logger.ts',
       'mailer.ts',
       'ops-session.ts',
