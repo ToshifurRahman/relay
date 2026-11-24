@@ -1,10 +1,14 @@
-[![CI](https://github.com/ToshifurRahman/ticket-pipe/actions/workflows/ci.yml/badge.svg)](https://github.com/ToshifurRahman/ticket-pipe/actions/workflows/ci.yml)
+[![CI](https://github.com/ToshifurRahman/relay/actions/workflows/ci.yml/badge.svg)](https://github.com/ToshifurRahman/relay/actions/workflows/ci.yml)
 
 # Relay
 
 Relay is a support-ticket pipeline. A customer submits a ticket, a background worker triages it with an LLM and drafts a reply, and the customer watches it happen live. Staff get an ops console with live updates, alerts and replay for failures.
 
 Built with Bun, Hono, PostgreSQL, Redis, AWS SQS, Socket.io and React.
+
+**Live demo:** <https://ticket-pipeline.onrender.com> — open [the home page](https://ticket-pipeline.onrender.com/) or [submit a ticket](https://ticket-pipeline.onrender.com/new) and watch it move.
+
+The demo runs on Render's free tier, which sleeps after 15 minutes without traffic. **The first request after a cold start can take about a minute** while the service and the Neon database wake up; later requests are fast. The demo exists to show the flow, so **do not submit real personal data**: anyone can read a ticket if they have its reference, and the retention sweep deletes tickets after 30 days.
 
 ![The customer flow: submit a ticket, watch it triaged, read the reply](docs/screenshots/customer-flow.gif)
 
@@ -48,18 +52,33 @@ All model calls go through `apps/api/src/lib/llm-client.ts`.
 
 ## Quick start
 
-**Needs:** Bun 1.3+, Node 20+ (Vitest only), Docker.
+**Needs:** Bun 1.3+, Node 24.22.1+ (Vitest only), Docker.
 
 ```bash
 bun install
 cp .env.example .env     # fill in the values below
-docker compose up -d     # Postgres, Redis, LocalStack (SQS/SNS), Mailpit; creates the queues
+docker compose up -d     # Postgres, Redis, LocalStack (SQS/SNS), Mailpit; its setup step creates the queues
 bun --filter @relay/api migrate
+bun --filter @relay/api setup            # idempotent; re-creates the local queues and SNS topic if needed
 bun --filter @relay/api dev              # API on http://localhost:3000
 bun --filter @relay/api worker           # in a second terminal
 ```
 
-In `.env`, set `PORTKEY_API_KEY`, `GOOGLE_API_KEY` (primary, Gemini) and `BACKUP_API_KEY` (Groq). To skip providers entirely, set `LLM_MODE=fake`. `.env.example` lists every variable. The API, the worker and each script validate them once at startup (`apps/api/src/lib/config.ts`): a missing or invalid variable stops the process at once and the message names it. AWS keys are required unless `SQS_ENDPOINT` is set (LocalStack).
+Each API script loads the repository root `.env` itself (`--env-file=../../.env`), so the commands above work from anywhere in the repository. The values must be filled in first: with the `.env.example` placeholders still empty, `migrate` stops with `Invalid environment: DATABASE_URL: required` and names every missing variable.
+
+In `.env`, set `DATABASE_URL`, `REDIS_URL` and `SQS_QUEUE_NAME` at the least, plus `PORTKEY_API_KEY`, `GOOGLE_API_KEY` (primary, Gemini) and `BACKUP_API_KEY` (Groq) for real model calls. `.env.example` gives a local value for each in its comment. To skip providers entirely, set `LLM_MODE=fake`. The API, the worker and each script validate the environment once at startup (`apps/api/src/lib/config.ts`): a missing or invalid variable stops the process at once and the message names it. AWS keys are not needed when `SQS_ENDPOINT` is set, because LocalStack accepts the placeholder `test` credentials.
+
+### Queue options: AWS SQS or ElasticMQ
+
+The queue is the AWS SQS API, so it talks to any implementation of it. Locally `docker compose up -d` starts LocalStack on `:4566` and `SQS_ENDPOINT` points at it. In production the same variable chooses the backend:
+
+| Backend                                                                                 | `SQS_ENDPOINT`                                   | `SNS_ENDPOINT`    | Notes                                                                                        |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------- | -------------------------------------------------------------------------------------------- |
+| AWS SQS (default)                                                                       | unset                                            | unset             | Real IAM keys and a real SNS topic for ops email.                                            |
+| LocalStack (local dev, e2e, CI)                                                         | `http://localhost:4566`                          | same              | The placeholder `test` credentials are enough; `bun --filter @relay/api setup` makes queues. |
+| [ElasticMQ](docs/production-infra.md#7-switch-to-elasticmq-hosting-is-an-open-decision) | the ElasticMQ host, e.g. `http://localhost:9324` | **must be empty** | No SNS, so ops email alerts are off; queue behaviour is otherwise the same.                  |
+
+The switch is one variable: nothing in the app changes. `docs/production-infra.md` records the local proof and the caveats (no SNS, different DLQ redrive timing, no managed multi-AZ).
 
 For a production-style local run, build once and start the API and worker together:
 
@@ -117,7 +136,18 @@ The repo is `apps/api`, `apps/web`, `e2e/`, `scripts/` and `docs/`. See [docs/AR
 
 ## Deployment
 
-The target is Render's free tier, described by the [`render.yaml`](render.yaml) blueprint: one Docker web service, `healthCheckPath: /health/ready`, and `autoDeployTrigger: checksPass` so a deploy waits for CI. The start command runs the migration before the server. See [Deploying to Render](docs/deployment.md) for the variable list, the free-plan behavior and rollback.
+The app runs at <https://ticket-pipeline.onrender.com> on Render's free tier, described by the [`render.yaml`](render.yaml) blueprint: one Docker web service, `healthCheckPath: /health/ready`, and `autoDeployTrigger: checksPass` so a deploy waits for CI. The start command runs the migration before the server.
+
+Read-only health endpoints, no auth and no data:
+
+```bash
+curl -sS https://ticket-pipeline.onrender.com/health/live    # {"status":"ok"}
+curl -sS https://ticket-pipeline.onrender.com/health/ready   # {"status":"ok"}
+```
+
+`/health/live` only proves the process is up. `/health/ready` also queries Postgres, so it is the one that reports a cold or suspended database truthfully. The free tier spins the service down after 15 minutes without traffic and Neon suspends its compute after 5 minutes idle, so the first request after a quiet period is slow (about a minute) while both wake. There is no uptime monitor: keeping the service awake would exhaust Neon's free compute allowance (the maths is in [deployment.md](docs/deployment.md#free-plan-behavior)). See [Deploying to Render](docs/deployment.md) for the variable list, the free-plan behavior and rollback.
+
+The demo has no login for customers, so treat any ticket as public and do not submit real personal data. Tickets are deleted 30 days after creation by the retention sweep.
 
 The `Dockerfile` builds the web app and runs the API and the worker together on `oven/bun` (`src/main.ts`). To split them later, override the command: `docker run <image> bun src/index.ts` for the API or `bun src/worker.ts` for the worker.
 

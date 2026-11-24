@@ -67,7 +67,7 @@ The live feed only helps while someone has it open. When a ticket enters `needs_
 publishes one alert to an AWS SNS topic, and SNS emails it to the ops address subscribed to that topic.
 
 ```
-Subject: [Ticket Pipe] TICK-1791462896000-9F2A1C07 needs attention (incomplete_output)
+Subject: [Relay] TICK-1791462896000-9F2A1C07 needs attention (incomplete_output)
 
 Ticket TICK-1791462896000-9F2A1C07 needs attention.
 
