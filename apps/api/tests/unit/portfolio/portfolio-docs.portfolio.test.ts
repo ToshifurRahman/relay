@@ -132,6 +132,17 @@ function lastContentRow(image: DecodedPng): number {
   return -1;
 }
 
+/** Markdown images plus HTML <img src>, so the README gallery may use either form. */
+function embeddedImages(markdown: string): string[] {
+  const images: string[] = [];
+  const markdownPattern = /!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = markdownPattern.exec(markdown)) !== null) images.push(match[1]);
+  const htmlPattern = /<img\b[^>]*\bsrc="([^"]+)"/g;
+  while ((match = htmlPattern.exec(markdown)) !== null) images.push(match[1]);
+  return images;
+}
+
 /** Markdown inline links and images, minus anchor-only targets and absolute URLs. */
 function relativeLinks(markdown: string): string[] {
   const links: string[] = [];
@@ -261,5 +272,49 @@ describe('portfolio: screenshots', () => {
 describe('portfolio: ops alert subject', () => {
   it('does not document the retired [Ticket Pipe] alert subject', () => {
     expect(read(path.join(ROOT, 'docs/ops.md'))).not.toContain('[Ticket Pipe]');
+  });
+});
+
+const GALLERY = [
+  'docs/screenshots/landing.png',
+  'docs/screenshots/ticket-completed.png',
+  'docs/screenshots/ops-drawer.png',
+  'docs/screenshots/mobile-ticket.png',
+];
+
+describe('portfolio: README go-live gallery', () => {
+  it('embeds the four gallery screenshots, each an existing non-empty file', () => {
+    const embedded = embeddedImages(read(README));
+    for (const target of GALLERY) expect(embedded).toContain(target);
+    const broken = GALLERY.filter((target) => {
+      const file = path.resolve(ROOT, target);
+      return !existsSync(file) || statSync(file).size === 0;
+    });
+    expect(broken).toEqual([]);
+  });
+});
+
+describe('portfolio: README go-live status and smoke', () => {
+  const readme = read(README);
+
+  it('states there is no status page and links the live liveness endpoint', () => {
+    expect(readme.toLowerCase()).toContain('no status page');
+    expect(readme).toContain('https://ticket-pipeline.onrender.com/health/live');
+  });
+
+  it('names the read-only live smoke command', () => {
+    expect(readme).toContain('bun run smoke:live');
+  });
+
+  it('links the manual submit-and-watch checklist', () => {
+    expect(readme).toContain('docs/ops.md#go-live-submit-and-watch');
+  });
+});
+
+describe('portfolio: ops go-live checklist', () => {
+  it('has a Go-live submit and watch section that warns about real LLM spend', () => {
+    const ops = read(path.join(ROOT, 'docs/ops.md'));
+    expect(ops).toMatch(/^## Go-live submit and watch$/m);
+    expect(ops).toMatch(/real LLM credits/);
   });
 });
