@@ -33,13 +33,20 @@ export function TicketThread({ description, createdAt, support, demo = false }: 
 
   return (
     <div className="flex min-h-62.5 flex-col gap-3 px-5.5 py-5">
-      <blockquote
-        className={cn(
-          'max-w-[86%] self-end border border-ply-received/45 bg-ply-received/6 px-4 py-3 whitespace-pre-wrap break-words text-foreground',
-          !expanded && 'line-clamp-4 sm:line-clamp-none'
-        )}
-      >
-        {description}
+      {/* The clamp sits on an unpadded inner block. `-webkit-line-clamp` only clips inside a
+          `-webkit-box`, and this padded panel computes `display: flow-root`, so clamping the
+          blockquote itself clipped the fifth line mid-glyph instead of stopping at four. */}
+      <blockquote className="max-w-[86%] self-end border border-ply-received/45 bg-ply-received/6 px-4 py-3 break-words text-foreground">
+        <span
+          className={cn(
+            'whitespace-pre-wrap',
+            // `block` and the clamp are exclusive: `.block` wins the display cascade, and a
+            // clamped element must keep the `-webkit-box` display the clamp rule sets.
+            expanded ? 'block' : 'line-clamp-4 sm:line-clamp-none'
+          )}
+        >
+          {description}
+        </span>
       </blockquote>
       {long && (
         <Button
