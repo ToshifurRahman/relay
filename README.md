@@ -14,7 +14,7 @@ The demo runs on Render's free tier, which sleeps after 15 minutes without traff
 
 <table>
   <tr>
-    <td><img src="docs/screenshots/landing.png" alt="Landing page: the headline, the ticket form and the live demo" width="380"></td>
+    <td><img src="docs/screenshots/landing.png" alt="Landing page: the headline, the Submit a ticket button and a sample ticket preview" width="380"></td>
     <td><img src="docs/screenshots/ticket-completed.png" alt="A finished ticket with the support reply and its event timeline" width="380"></td>
   </tr>
   <tr>
@@ -89,7 +89,7 @@ The queue is the AWS SQS API, so it talks to any implementation of it. Locally `
 | LocalStack (local dev, e2e, CI)                                                         | `http://localhost:4566`                          | same              | The placeholder `test` credentials are enough; `bun --filter @relay/api setup` makes queues. |
 | [ElasticMQ](docs/production-infra.md#7-switch-to-elasticmq-hosting-is-an-open-decision) | the ElasticMQ host, e.g. `http://localhost:9324` | **must be empty** | No SNS, so ops email alerts are off; queue behaviour is otherwise the same.                  |
 
-The switch is one variable: nothing in the app changes. `docs/production-infra.md` records the local proof and the caveats (no SNS, different DLQ redrive timing, no managed multi-AZ).
+The switch is one variable: nothing in the app changes. The AWS free plan ends on **3 April 2027**; after that, ElasticMQ is the fallback. `docs/production-infra.md` records the local proof and the caveats (no SNS, different DLQ redrive timing, no managed multi-AZ).
 
 For a production-style local run, build once and start the API and worker together:
 
