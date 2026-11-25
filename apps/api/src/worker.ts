@@ -5,6 +5,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { checkCustomerReply, type ReplyRejection } from './domain/customer-reply-guard.js';
 import { TicketNotFoundError } from './domain/errors.js';
 import { UUID_RE } from './domain/ids.js';
+import { stripReplyPlaceholders } from './domain/reply-placeholders.js';
 import {
   type ProcessingResult,
   resolveTicketFailureCounts,
@@ -353,7 +354,10 @@ async function runPipeline(
     try {
       await recordTicketEvent(ticket, 'draft.started');
       emitTicketUpdate(ticketId, 'draft.started');
-      const output = await ai.draft(ticketId, ticket.subject, ticket.description, triageOutput);
+      const drafted = await ai.draft(ticketId, ticket.subject, ticket.description, triageOutput);
+      // Template slots such as `[Your Name]` are removed before any check, so the customer never
+      // sees one and a reply made only of slots is caught as incomplete below.
+      const output = { ...drafted, customerReply: stripReplyPlaceholders(drafted.customerReply) };
       // A blank or otherwise incomplete reply is a different condition from an unsafe one: it keeps
       // `incomplete_output`, the reason ops already triages, and never becomes `unsafe_output`.
       const validation = validateDraftOutput(output);

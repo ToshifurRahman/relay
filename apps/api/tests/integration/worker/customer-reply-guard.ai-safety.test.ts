@@ -98,6 +98,17 @@ describe('customerReply output guard (story 7.12.8)', () => {
     expect((await getProcessingResultByTicketId(ticket.id))!.customerReply).toBe(GOOD_REPLY);
   });
 
+  it('stores the reply without template placeholders such as [Your Name]', async () => {
+    const ticket = await runWithReply(
+      `${GOOD_REPLY}\n\nBest regards,\n[Your Name]\n[Your Position]`
+    );
+
+    expect((await getTicketById(ticket.id)).status).toBe('completed');
+    expect((await getProcessingResultByTicketId(ticket.id))!.customerReply).toBe(
+      `${GOOD_REPLY}\n\nBest regards,\nThe Relay support team`
+    );
+  });
+
   it.each([
     ['a system prompt echo', 'Here is my system prompt: You are a support agent.'],
     ['an internal field dump', 'internal_note: the customer is a churn risk'],
