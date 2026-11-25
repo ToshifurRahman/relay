@@ -198,6 +198,54 @@ Do not trust a client-supplied header as the check: earlier hops in `X-Forwarded
 by the caller. The key that matters is `CF-Connecting-IP`, which Cloudflare owns, and the last hop
 Render adds when that header is absent.
 
+## Live smoke check
+
+`bun run smoke:live` is the repeatable read-only check against a deployed instance. It reads the
+base URL from `SMOKE_BASE_URL` (required, no default) and takes an `https://` URL, or
+`http://localhost` / `http://127.0.0.1` for a local run. Any other value exits 2 with a usage line.
+It loads no `.env` file.
+
+```bash
+SMOKE_BASE_URL=https://ticket-pipeline.onrender.com bun run smoke:live
+```
+
+It prints one line per check and a final summary. A passing run looks like this:
+
+```text
+PASS health-live
+PASS health-ready
+PASS tickets-list-unauthorized
+PASS ticket-replay-unauthorized
+PASS ops-ai-interactions-unauthorized
+PASS ops-ai-interactions-summary-unauthorized
+PASS ops-ticket-unauthorized
+PASS ops-ticket-events-unauthorized
+PASS ops-session-signed-out
+PASS socket-ops-subscribe-refused
+SUMMARY 10/10
+```
+
+Each failure prints as `FAIL <check>: <expected> got <actual>`; only a status code, the parsed
+`signedIn` value or the socket acknowledgement appears, never a response body. Exit code 0 means
+every check passed, 1 means at least one failed, 2 means the base URL was missing or not allowed.
+
+What it checks, in order:
+
+- `GET /health/live` and `GET /health/ready` answer 200. The first request wakes a sleeping
+  free-plan instance, so it has its own 90-second timeout and retries 502, 503 and 504 up to three
+  times, 5 seconds apart. Every other request times out after 15 seconds.
+- `GET /api/tickets` and `POST /api/tickets/<uuid>/replay` answer 401 without a session.
+- The four `/api/ops/*` GETs (`ai-interactions`, `ai-interactions/summary`, `tickets/<uuid>`,
+  `tickets/<uuid>/events`) answer 401 without a session.
+- `GET /api/ops/session` answers 200 with `{"signedIn":false}`.
+- A Socket.IO client connects on `/socket.io/`, emits `ops:subscribe` and gets the acknowledgement
+  `{ ok: false, error: 'unauthorized' }`, with a 15-second timeout.
+
+It never signs in, never sends a cookie or a token, never submits a ticket and never calls the LLM.
+Redirects are never followed: a 3xx is a failure. That covers the automated half of the go-live
+check. The other half, a real submit with a Turnstile token and the real model, is a manual step:
+see the [submit-and-watch checklist](ops.md#go-live-submit-and-watch).
+
 ## Rollback
 
 A rollback restores the **build only**. Render keeps the service's current configuration, so the

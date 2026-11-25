@@ -12,6 +12,7 @@
     "setup": "bun --env-file=../../.env scripts/setup-infra.ts",
     "migrate": "bun --env-file=../../.env scripts/migrate.ts",
     "smoke:infra": "bun --env-file=../../.env scripts/smoke-infra.ts",
+    "smoke:live": "bun scripts/smoke-live.ts",
     "purge": "bun --env-file=../../.env scripts/purge.ts",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",

@@ -22,6 +22,7 @@
     "test:image": "bun scripts/image-smoke.ts",
     "lighthouse": "bun scripts/lighthouse.ts",
     "screenshots": "bun scripts/screenshots.ts",
+    "smoke:live": "bun --filter @relay/api smoke:live",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --max-warnings 0 --fix",
     "test": "bun --filter '*' test",
