@@ -12,6 +12,17 @@ The demo runs on Render's free tier, which sleeps after 15 minutes without traff
 
 ![The customer flow: submit a ticket, watch it triaged, read the reply](docs/screenshots/customer-flow.gif)
 
+<table>
+  <tr>
+    <td><img src="docs/screenshots/landing.png" alt="Landing page: the headline, the ticket form and the live demo" width="380"></td>
+    <td><img src="docs/screenshots/ticket-completed.png" alt="A finished ticket with the support reply and its event timeline" width="380"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/ops-drawer.png" alt="Ops console drawer showing a ticket and its recorded AI calls" width="380"></td>
+    <td><img src="docs/screenshots/mobile-ticket.png" alt="The same ticket on a phone" width="180"></td>
+  </tr>
+</table>
+
 ## What it shows
 
 - **LLMs in a real pipeline.** Two stages (triage, then draft), each returning schema-validated JSON, with timeouts, retries and a backup provider.
@@ -145,7 +156,9 @@ curl -sS https://ticket-pipeline.onrender.com/health/live    # {"status":"ok"}
 curl -sS https://ticket-pipeline.onrender.com/health/ready   # {"status":"ok"}
 ```
 
-`/health/live` only proves the process is up. `/health/ready` also queries Postgres, so it is the one that reports a cold or suspended database truthfully. The free tier spins the service down after 15 minutes without traffic and Neon suspends its compute after 5 minutes idle, so the first request after a quiet period is slow (about a minute) while both wake. There is no uptime monitor: keeping the service awake would exhaust Neon's free compute allowance (the maths is in [deployment.md](docs/deployment.md#free-plan-behavior)). See [Deploying to Render](docs/deployment.md) for the variable list, the free-plan behavior and rollback.
+The read-only check against the live host is `bun run smoke:live` (see [the live smoke check](docs/deployment.md#live-smoke-check)); the ticket submit is the manual [go-live submit and watch](docs/ops.md#go-live-submit-and-watch) checklist.
+
+`/health/live` only proves the process is up. `/health/ready` also queries Postgres, so it is the one that reports a cold or suspended database truthfully. The free tier spins the service down after 15 minutes without traffic and Neon suspends its compute after 5 minutes idle, so the first request after a quiet period is slow (about a minute) while both wake. There is no status page or uptime monitor; check liveness directly at <https://ticket-pipeline.onrender.com/health/live>. An outside pinger would keep the sleeping free-plan service awake and spend Neon's free compute hours (the maths is in [deployment.md](docs/deployment.md#free-plan-behavior)). See [Deploying to Render](docs/deployment.md) for the variable list, the free-plan behavior and rollback.
 
 The demo has no login for customers, so treat any ticket as public and do not submit real personal data. Tickets are deleted 30 days after creation by the retention sweep.
 
