@@ -15,6 +15,12 @@ const DOCS = path.join(ROOT, 'docs');
 
 const read = (file: string) => readFileSync(file, 'utf8');
 
+/** True when a repository-relative target exists and is a non-empty file. */
+function nonEmptyFile(target: string): boolean {
+  const file = path.resolve(ROOT, target);
+  return existsSync(file) && statSync(file).size > 0;
+}
+
 type RootManifest = { license?: string; engines: { node: string } };
 const manifest = (): RootManifest =>
   JSON.parse(read(path.join(ROOT, 'package.json'))) as RootManifest;
@@ -132,6 +138,17 @@ function lastContentRow(image: DecodedPng): number {
   return -1;
 }
 
+/** Markdown images plus HTML <img src>, so the README gallery may use either form. */
+function embeddedImages(markdown: string): string[] {
+  const images: string[] = [];
+  const markdownPattern = /!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = markdownPattern.exec(markdown)) !== null) images.push(match[1]);
+  const htmlPattern = /<img\b[^>]*\bsrc="([^"]+)"/g;
+  while ((match = htmlPattern.exec(markdown)) !== null) images.push(match[1]);
+  return images;
+}
+
 /** Markdown inline links and images, minus anchor-only targets and absolute URLs. */
 function relativeLinks(markdown: string): string[] {
   const links: string[] = [];
@@ -218,6 +235,13 @@ describe('portfolio: README truthfulness', () => {
     expect(readme).toContain('SQS_ENDPOINT');
   });
 
+  it('names the AWS free-plan end date and ElasticMQ as the fallback after it', () => {
+    const start = readme.indexOf('### Queue options');
+    const queue = readme.slice(start, readme.indexOf('\n## ', start));
+    expect(queue).toContain('3 April 2027');
+    expect(queue).toContain('ElasticMQ');
+  });
+
   it('states the Node version the repository actually requires', () => {
     const minimum = manifest().engines.node.replace(/[^0-9.]/g, '');
     expect(readme).toContain(minimum);
@@ -230,10 +254,7 @@ describe('portfolio: screenshots', () => {
       target.startsWith('docs/screenshots/')
     );
     expect(embedded.length).toBeGreaterThan(0);
-    const problems = embedded.filter((target) => {
-      const file = path.resolve(ROOT, target);
-      return !existsSync(file) || statSync(file).size === 0;
-    });
+    const problems = embedded.filter((target) => !nonEmptyFile(target));
     expect(problems).toEqual([]);
   });
 
@@ -261,5 +282,59 @@ describe('portfolio: screenshots', () => {
 describe('portfolio: ops alert subject', () => {
   it('does not document the retired [Ticket Pipe] alert subject', () => {
     expect(read(path.join(ROOT, 'docs/ops.md'))).not.toContain('[Ticket Pipe]');
+  });
+});
+
+const GALLERY = [
+  'docs/screenshots/landing.png',
+  'docs/screenshots/ticket-completed.png',
+  'docs/screenshots/ops-drawer.png',
+  'docs/screenshots/mobile-ticket.png',
+];
+
+describe('portfolio: README go-live gallery', () => {
+  it('embeds the four gallery screenshots, each an existing non-empty file', () => {
+    const embedded = embeddedImages(read(README));
+    for (const target of GALLERY) expect(embedded).toContain(target);
+    expect(GALLERY.filter((target) => !nonEmptyFile(target))).toEqual([]);
+  });
+});
+
+describe('portfolio: README go-live status and smoke', () => {
+  const readme = read(README);
+
+  it('states there is no status page and links the live liveness endpoint', () => {
+    expect(readme.toLowerCase()).toContain('no status page');
+    expect(readme).toContain('<https://ticket-pipeline.onrender.com/health/live>');
+  });
+
+  it('names the read-only live smoke command', () => {
+    expect(readme).toContain('bun run smoke:live');
+  });
+
+  it('links the manual submit-and-watch checklist', () => {
+    expect(readme).toContain('docs/ops.md#go-live-submit-and-watch');
+  });
+});
+
+describe('portfolio: ops go-live checklist', () => {
+  const ops = read(path.join(DOCS, 'ops.md'));
+  const start = ops.indexOf('## Go-live submit and watch\n');
+  const section = start === -1 ? '' : ops.slice(start);
+
+  it('has a Go-live submit and watch section that warns about real LLM spend', () => {
+    expect(section).toMatch(/^## Go-live submit and watch$/m);
+    expect(section).toMatch(/real LLM credits/);
+  });
+
+  it('uses the reference format the API generates', () => {
+    expect(section).toMatch(/TICK-\d{13}-[0-9A-F]{8}/);
+    expect(section).not.toContain('TKT-001');
+  });
+
+  it('names every cap a live submit counts against', () => {
+    for (const name of ['LLM_DAILY_CAP', 'TICKET_DAILY_CAP', 'TICKET_IP_HOURLY_LIMIT']) {
+      expect(section).toContain(name);
+    }
   });
 });

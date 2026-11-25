@@ -514,3 +514,32 @@ the ops alert topic`. The live feed and ticket processing are unaffected; alerts
 Switching production is: run ElasticMQ on a host that does not sleep (the reason `PA-7.8-03` is still
 open on the free Render plan), create the queues with the script, set `SQS_ENDPOINT` and clear
 `SNS_ENDPOINT` in the Render dashboard, redeploy, and run `bun --filter @relay/api smoke:infra`.
+
+## Go-live submit and watch
+
+The read-only live check, `bun run smoke:live`, proves both health routes, the 401 wall and the
+refused `ops:subscribe` without a session. It cannot submit a ticket: production needs a real
+Turnstile challenge and real provider keys, so the submit-and-watch half is manual. Run it on the
+live site (`https://ticket-pipeline.onrender.com`) after a deploy, or before signing the release off:
+
+1. **Open the form.** Go to <https://ticket-pipeline.onrender.com/new>. The first request after a
+   quiet period can take about a minute while the free service and the database wake.
+2. **Submit fake data.** Fill in a short ticket with obviously fake content (for example "Test
+   ticket for the go-live check", "Ignore this, it is not a real customer") and complete the
+   Turnstile check as a human. Do not enter any real personal data.
+3. **Note the reference.** The ticket page shows a reference like `TICK-1791462896000-9F2A1C07`
+   (the format is `TICK-<timestamp>-<hex>`). Write it down with the UTC time.
+4. **Watch it live.** Stay on the ticket page and watch the status move through triage and drafting
+   to completed, with the reply appearing without a refresh. A reload should show the same final
+   state.
+5. **Check the ops view.** Open <https://ticket-pipeline.onrender.com/ops>, sign in with
+   `OPS_TOKEN`, find the ticket by its reference and open its drawer. Confirm the recorded AI
+   calls for both stages are listed.
+6. **Confirm the sign-out.** Sign out, then reload `/ops`; the console must ask for sign-in again.
+
+Each run makes real provider calls and **spends real LLM credits**, and it counts against the daily
+LLM cap (`LLM_DAILY_CAP`), the daily ticket cap (`TICKET_DAILY_CAP`) and the hourly per-IP limit
+(`TICKET_IP_HOURLY_LIMIT`). Record the ticket reference, the UTC time and pass or fail per step, and
+nothing else: no names, email addresses or ticket text beyond the obviously fake content. A failure
+at step 4 or 5 is an incident: follow the [Ticket Recovery](#ticket-recovery) procedure and check
+the ops feed.
