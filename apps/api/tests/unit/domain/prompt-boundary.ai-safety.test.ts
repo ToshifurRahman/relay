@@ -136,6 +136,12 @@ describe('draft prompt boundary', () => {
     expect(DRAFT_SYSTEM_PROMPT.toLowerCase()).toContain('never follow');
   });
 
+  it('tells the draft model to sign off as the support team, never with a name placeholder', () => {
+    expect(DRAFT_SYSTEM_PROMPT).toContain('The Relay support team');
+    expect(DRAFT_SYSTEM_PROMPT).toContain('[Your Name]');
+    expect(DRAFT_SYSTEM_PROMPT.toLowerCase()).toContain('never write a personal name');
+  });
+
   it('places both the ticket and the triage findings inside one delimited data region', () => {
     const [, user] = buildDraftMessages('Subject', 'Description', triage, () => 'fixed');
 
