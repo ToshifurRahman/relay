@@ -11,6 +11,11 @@ scripts/ Lighthouse, screenshots, gate
 docs/    Feature docs and this file
 ```
 
+`scripts/lighthouse.ts` runs the Lighthouse gate against the local stack by default. Live mode
+points the same assertions at an external site without a build, stack or seed:
+`LH_LIVE_URL=https://ticket-pipeline.onrender.com bun run lighthouse` (add `LH_TICKET_REF` to
+include `/t/:ref`). It wakes the free Render service, so run it on demand only.
+
 ### `apps/api`
 
 | Folder        | Holds                                                 |
