@@ -2,10 +2,11 @@
 # Story 7.12.12 Launch Gate. Runs every project check in order, one at a time, then fails on any
 # open Critical/High finding in the launch audit docs. Browser output is removed on exit.
 #
-# Usage: scripts/gate.sh [--skip-browser] [--check-docs-only] [--docs-dir DIR]
-#   --skip-browser     run the non-browser checks only (format, lint, typecheck, tests, scans)
-#   --check-docs-only  run only the audit-doc open Critical/High check
-#   --docs-dir DIR     audit doc directory for the check (default docs/audit/launch)
+# Usage: scripts/gate.sh [--skip-browser] [--check-docs-only] [--secret-scan-only] [--docs-dir DIR]
+#   --skip-browser      run the non-browser checks only (format, lint, typecheck, tests, scans)
+#   --check-docs-only   run only the audit-doc open Critical/High check
+#   --secret-scan-only  run only the secret scan (gitleaks when present, otherwise the fallback)
+#   --docs-dir DIR      audit doc directory for the check (default docs/audit/launch)
 
 set -euo pipefail
 
@@ -15,15 +16,17 @@ cd "$ROOT"
 DOCS_DIR="$ROOT/docs/audit/launch"
 SKIP_BROWSER=0
 CHECK_DOCS_ONLY=0
+SECRET_SCAN_ONLY=0
 
 usage() {
-  echo "usage: scripts/gate.sh [--skip-browser] [--check-docs-only] [--docs-dir DIR]" >&2
+  echo "usage: scripts/gate.sh [--skip-browser] [--check-docs-only] [--secret-scan-only] [--docs-dir DIR]" >&2
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-browser) SKIP_BROWSER=1; shift ;;
     --check-docs-only) CHECK_DOCS_ONLY=1; shift ;;
+    --secret-scan-only) SECRET_SCAN_ONLY=1; shift ;;
     --docs-dir)
       [[ $# -ge 2 ]] || { echo "gate.sh: --docs-dir needs a path" >&2; exit 2; }
       DOCS_DIR="$2"
@@ -106,6 +109,19 @@ check_audit_docs() {
 }
 
 scan_secrets() {
+  if command -v gitleaks >/dev/null 2>&1; then
+    echo "secret scan: gitleaks detect --no-banner --redact"
+    local status=0
+    gitleaks detect --no-banner --redact || status=$?
+    if ((status != 0)); then
+      echo "secret scan: gitleaks reported findings (exit $status)" >&2
+      return "$status"
+    fi
+    echo "secret scan: clean (gitleaks)"
+    return 0
+  fi
+
+  echo "secret scan: gitleaks absent, using the full-history git grep fallback"
   local revisions
   mapfile -t revisions < <(git rev-list --all)
 
@@ -126,7 +142,7 @@ scan_secrets() {
     [[ -n "$uri_hits" ]] && printf '%s\n' "$uri_hits" >&2
     return 1
   fi
-  echo "secret scan: clean (${#revisions[@]} revisions; gitleaks absent, full-history git grep fallback)"
+  echo "secret scan: clean (${#revisions[@]} revisions, full-history git grep fallback)"
 }
 
 run_dependency_audit() {
@@ -142,6 +158,11 @@ echo "Launch Gate on $(git rev-parse --short HEAD) $(git branch --show-current)"
 
 if ((CHECK_DOCS_ONLY)); then
   check_audit_docs "$DOCS_DIR"
+  exit 0
+fi
+
+if ((SECRET_SCAN_ONLY)); then
+  scan_secrets
   exit 0
 fi
 

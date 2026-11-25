@@ -47,6 +47,7 @@ type Finding = {
 };
 
 const SEVERITIES = new Set(['Critical', 'High', 'Medium', 'Low', 'P0', 'P1', 'P2']);
+const FINDING_ID = /^(?:[A-Z]+-\d+|PA-[\d.]+-\d+)$/;
 
 function cells(line: string): string[] {
   const stripped = line.trim().replace(/^\|/, '').replace(/\|$/, '');
@@ -58,13 +59,14 @@ function findings(file: string): Finding[] {
   for (const line of readFileSync(file, 'utf8').split('\n')) {
     if (!line.trim().startsWith('|')) continue;
     const row = cells(line);
-    if (row.length < 5 || !/^[A-Z]+-\d+$/.test(row[0])) continue;
+    if (row.length < 5 || !FINDING_ID.test(row[0])) continue;
     if (!SEVERITIES.has(row[1])) continue;
+    const isPreAudit = row[0].startsWith('PA-');
     rows.push({
       id: row[0],
       severity: row[1],
       location: row[2],
-      reason: row[4],
+      reason: isPreAudit ? row[3] : row[4],
       status: row[row.length - 1],
     });
   }
@@ -118,13 +120,52 @@ describe('scripts/gate.sh Launch Gate runner', () => {
     expect(body).toContain('.lighthouseci');
     expect(body).toMatch(/--skip-browser/);
     expect(body).toMatch(/--check-docs-only/);
+    expect(body).toMatch(/--secret-scan-only/);
+    expect(body).toMatch(/command -v gitleaks/);
   });
+
+  it('runs gitleaks when it is on PATH and the fallback when it is not', () => {
+    const dir = fixture({});
+    const marker = path.join(dir, 'gitleaks-args');
+    const stub = path.join(dir, 'gitleaks');
+    writeFileSync(
+      stub,
+      ['#!/usr/bin/env bash', `printf '%s\\n' "$@" > '${marker}'`, 'exit 0', ''].join('\n'),
+      { mode: 0o755 }
+    );
+
+    const detected = spawnSync('bash', [GATE, '--secret-scan-only'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH}` },
+    });
+    expect(detected.status, detected.stdout + detected.stderr).toBe(0);
+    expect(readFileSync(marker, 'utf8').trim().split('\n')).toEqual([
+      'detect',
+      '--no-banner',
+      '--redact',
+    ]);
+
+    const fallback = spawnSync('bash', [GATE, '--secret-scan-only'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      timeout: 120_000,
+      env: { ...process.env, PATH: '/usr/bin:/bin' },
+    });
+    expect(fallback.status, fallback.stdout + fallback.stderr).toBe(0);
+    expect(fallback.stdout).toMatch(/full-history git grep fallback/);
+  }, 120_000);
 
   it(
     'passes the audit-doc check on every existing launch audit doc',
     () => {
       expect(launchDocNames()).toEqual(
-        expect.arrayContaining(['01-security.md', '10-portfolio-readiness.md'])
+        expect.arrayContaining([
+          '01-security.md',
+          '10-portfolio-readiness.md',
+          '11-epic-7-delivery.md',
+        ])
       );
       const result = runDocsCheck(DOCS);
       expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -201,11 +242,9 @@ describe('docs/audit/launch/gate.md rollup', () => {
     expect(gate).toMatch(/Gate decision:/);
     expect(gate).toMatch(/0 open Critical/);
     expect(gate).toMatch(/0 open High/);
-    const hasDelivery = launchDocNames().includes('11-epic-7-delivery.md');
-    if (!hasDelivery) {
-      expect(gate).toMatch(/PENDING 7\.12\.11/);
-      expect(gate).not.toMatch(/Gate decision:\s*(GO|go)\b/);
-    }
+    expect(launchDocNames()).toContain('11-epic-7-delivery.md');
+    expect(gate).toMatch(/Gate decision:\s*\*{0,2}GO\b/);
+    expect(gate).not.toMatch(/PENDING 7\.12\.11/);
   });
 
   it('lists every accepted Medium and Low risk from the audit docs with a reason', () => {
@@ -218,33 +257,38 @@ describe('docs/audit/launch/gate.md rollup', () => {
       );
     expect(accepted.length).toBeGreaterThan(0);
 
+    const gateText = readFileSync(GATE_DOC, 'utf8');
     const register = new Map<string, string[]>();
-    for (const line of readFileSync(GATE_DOC, 'utf8').split('\n')) {
+    for (const line of gateText.split('\n')) {
       if (!line.trim().startsWith('|')) continue;
       const row = cells(line);
-      if (row.length < 5 || !/^[A-Z]+-\d+$/.test(row[0])) continue;
+      if (row.length < 5 || !FINDING_ID.test(row[0])) continue;
       register.set(row[0], row);
     }
 
-    const missing = accepted.filter((f) => !register.has(f.id)).map((f) => f.id);
+    const missing = accepted.filter((f) => !gateText.includes(f.id)).map((f) => f.id);
     expect(missing).toEqual([]);
 
-    for (const finding of accepted) {
+    const crossReferenced = accepted.filter((f) => !register.has(f.id)).map((f) => f.id);
+    expect(crossReferenced).toEqual(['PA-7.8-03']);
+
+    for (const finding of accepted.filter((f) => register.has(f.id))) {
       const row = register.get(finding.id)!;
       expect(row[1], `${finding.id} severity`).toBe(finding.severity);
       expect(row[2], `${finding.id} area doc`).toBe(finding.doc);
       expect(row[4].length, `${finding.id} reason`).toBeGreaterThan(40);
     }
 
-    for (const id of register.keys()) {
-      expect(accepted.map((f) => f.id)).toContain(id);
-    }
+    const acceptedIds = accepted.map((f) => f.id);
+    for (const id of register.keys()) expect(acceptedIds).toContain(id);
   });
 
   it('records the real automated gate evidence', () => {
     const gate = readFileSync(GATE_DOC, 'utf8');
     expect(gate).toMatch(/scripts\/gate\.sh/);
+    expect(gate).toMatch(/gate-final-run\.log/);
     expect(gate).toMatch(/gitleaks/);
+    expect(gate).toMatch(/command -v gitleaks/);
     expect(gate).toMatch(/bun audit/);
     expect(gate).toMatch(/test:e2e/);
     expect(gate).toMatch(/lighthouse/i);
