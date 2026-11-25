@@ -53,8 +53,9 @@ condition, accepted).
 Every accepted Medium and Low finding from `01` through `11` appears once below, with its exact ID,
 severity, area doc, location and accepted-risk reason. Nothing is omitted: the register has 19 rows,
 the 16 accepted findings from `01` to `10` plus `DEL-02`, `PA-7.11-02` and `PA-7.11-03` from `11`, and
-it matches the accepted columns of the rollup (eight Medium, eleven Low). `PA-7.8-03` is the same risk
-as `OPS-03` and is cross-referenced below rather than counted twice.
+it matches the accepted columns of the rollup (six Medium in the area table, eight in the register
+including the two PA-7.11 dispositions, eleven Low). `PA-7.8-03` is the same risk as `OPS-03` and is
+cross-referenced below rather than counted twice.
 
 | ID         | Severity | Area doc                  | Location                                                                                                  | Accepted-risk reason                                                                                                                                                                                                                                                                                   |
 | ---------- | -------- | ------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -85,14 +86,18 @@ that does not sleep); it is not a second risk and is not counted twice.
 
 `scripts/gate.sh` is the single-command Launch Gate. It runs the steps below in order, one at a time,
 records each result, and exits non-zero if any step fails; its `trap` removes `apps/web/dist` and
-`.lighthouseci` on exit. The full run is in `reports/logs/gate-final-run.log`.
+`.lighthouseci` on exit. `reports/logs/gate-final-run.log` is the full run, including the browser and
+Lighthouse steps, captured on `54ced00`, whose `apps/api/src/` and `apps/web/` tree is identical to
+this head. The post-fix `--skip-browser` run on the final head is
+`reports/logs/gate-head-skip-browser.log`; it confirms the same non-browser results with the two new
+gate tests included.
 
 | #   | Step             | Command                                                                                                             | Result                                                                                                              |
 | --- | ---------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | 1   | Format           | `bun run format:check`                                                                                              | pass, exit 0                                                                                                        |
 | 2   | Lint             | `bun run lint --concurrency=off`                                                                                    | pass, exit 0, zero warnings                                                                                         |
 | 3   | Typecheck        | `bun run typecheck`                                                                                                 | pass, exit 0                                                                                                        |
-| 4   | API unit         | `env NODE_ENV=test bun --filter @relay/api test:unit --maxWorkers=1 --no-file-parallelism`                          | 727 passed, 0 failed, 0 skipped, 69 files, exit 0                                                                   |
+| 4   | API unit         | `env NODE_ENV=test bun --filter @relay/api test:unit --maxWorkers=1 --no-file-parallelism`                          | 729 passed, 0 failed, 0 skipped, 69 files, exit 0                                                                   |
 | 5   | API integration  | `env NODE_ENV=test bun --filter @relay/api test:integration --maxWorkers=1 --no-file-parallelism`                   | 382 passed, 0 failed, 0 skipped, 36 files, exit 0                                                                   |
 | 6   | Web              | `env NODE_ENV=test bun --filter @relay/web test --maxWorkers=1 --no-file-parallelism`                               | 334 passed, 0 failed, 0 skipped, 37 files, exit 0                                                                   |
 | 7   | E2E and a11y     | `bun run test:e2e`                                                                                                  | 65 passed, 0 failed, 0 skipped, exit 0                                                                              |
@@ -128,8 +133,10 @@ Lighthouse stacks use high daily caps so a shared host counter cannot flake them
 
 ## Pre-7.13 operator checklist
 
-- Redeploy the Render service so it serves the merged Wave 1 to Wave 5 fixes (the live bundle still
-  predates the legal and frontend fixes recorded in `09-legal-truthfulness.md`).
+- Redeploy the Render service to ship the merged `7.12.11` `DEL-01` thread-clamp fix and the
+  `7.12.12` gate documents. The Wave 1 to Wave 5 fixes, including the `09-legal-truthfulness.md` and
+  `06-frontend-prod.md` fixes, are already live on Render: `11-epic-7-delivery.md` records the
+  deployed bundle as the Wave 5 web build.
 - Set the repository description, homepage and topics with the exact `gh repo edit` command in
   `10-portfolio-readiness.md` (`PORT-07`), and confirm `licenseInfo` fills after `LICENSE` is on
   `main`.

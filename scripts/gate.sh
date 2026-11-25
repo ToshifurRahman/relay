@@ -87,7 +87,7 @@ check_audit_docs() {
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", id)
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", severity)
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", status)
-        if (id !~ /^[A-Z]+-[0-9]+$/) next
+        if (id !~ /^([A-Z]+-[0-9]+|PA-[0-9.]+-[0-9]+)$/) next
         if (tolower(status) != "open") next
         sev = tolower(severity)
         if (sev == "critical" || sev == "high" || sev == "p0" || sev == "p1")

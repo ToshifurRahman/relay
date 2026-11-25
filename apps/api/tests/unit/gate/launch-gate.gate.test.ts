@@ -157,6 +157,21 @@ describe('scripts/gate.sh Launch Gate runner', () => {
     expect(fallback.stdout).toMatch(/full-history git grep fallback/);
   }, 120_000);
 
+  it('propagates a gitleaks finding as a non-zero exit', () => {
+    const dir = fixture({});
+    const stub = path.join(dir, 'gitleaks');
+    writeFileSync(stub, ['#!/usr/bin/env bash', 'exit 1', ''].join('\n'), { mode: 0o755 });
+
+    const result = spawnSync('bash', [GATE, '--secret-scan-only'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH}` },
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/reported findings/);
+  }, 60_000);
+
   it(
     'passes the audit-doc check on every existing launch audit doc',
     () => {
@@ -225,6 +240,24 @@ describe('scripts/gate.sh Launch Gate runner', () => {
       });
       const result = runDocsCheck(dir);
       expect(result.status, result.stdout + result.stderr).toBe(0);
+    },
+    FIXTURE_TIMEOUT
+  );
+
+  it(
+    'fails the audit-doc check on an Open High pre-audit finding',
+    () => {
+      const dir = fixture({
+        '04-fixture.md': [
+          '| ID        | Severity | Story | Evidence | Status |',
+          '| --------- | -------- | ----- | -------- | ------ |',
+          '| PA-9.9-01 | High     | 9.9   | x        | Open   |',
+          '',
+        ].join('\n'),
+      });
+      const result = runDocsCheck(dir);
+      expect(result.status, result.stdout + result.stderr).not.toBe(0);
+      expect(result.stdout + result.stderr).toMatch(/PA-9\.9-01/);
     },
     FIXTURE_TIMEOUT
   );
